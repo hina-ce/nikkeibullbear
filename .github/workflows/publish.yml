@@ -1,0 +1,70 @@
+name: Update NAV and publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # UTC: Mon-Fri 09:15-14:45 = JST: Mon-Fri 18:15-23:45.
+    - cron: '15,45 9-14 * * 1-5'
+    # UTC: Mon-Fri 21:15 = JST: Tue-Sat 06:15.
+    - cron: '15 21 * * 1-5'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Test CSV handling
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Test dates, calculations, and offline app behavior
+        run: node --test
+      - name: Fetch and save official NAV history
+        id: update
+        shell: bash
+        run: |
+          python scripts/update_nav.py
+          if git diff --quiet -- data/nav.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add data/nav.json
+            git commit -m 'Update official fund NAV'
+            git push origin HEAD:main
+          fi
+      - name: Package public assets
+        if: github.event_name != 'schedule' || steps.update.outputs.changed == 'true'
+        run: python scripts/build_site.py
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'schedule' || steps.update.outputs.changed == 'true'
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'schedule' || steps.update.outputs.changed == 'true'
+        with:
+          path: .site
+      - name: Deploy GitHub Pages
+        id: deployment
+        if: github.event_name != 'schedule' || steps.update.outputs.changed == 'true'
+        uses: actions/deploy-pages@v4

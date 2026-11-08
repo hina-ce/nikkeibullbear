@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#172337"/>
+  <path d="M140 323l77-56 63 29 92-104m-66 0h66v66" fill="none" stroke="#93b9ff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="256" y="221" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="116" font-weight="700" fill="#ffffff">4.3</text>
+</svg>
