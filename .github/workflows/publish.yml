@@ -5,6 +5,8 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
+    # UTC: Mon-Fri 00:02-06:57 = JST: Mon-Fri 09:02-15:57 (every 5 minutes).
+    - cron: '2-59/5 0-6 * * 1-5'
     # UTC: Mon-Fri 09:15-14:45 = JST: Mon-Fri 18:15-23:45.
     - cron: '15,45 9-14 * * 1-5'
     # UTC: Mon-Fri 21:15 = JST: Tue-Sat 06:15.
@@ -40,19 +42,23 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Test dates, calculations, and offline app behavior
         run: node --test
-      - name: Fetch and save official NAV history
+      - name: Fetch and save market data
         id: update
         shell: bash
         run: |
-          python scripts/update_nav.py
-          if git diff --quiet -- data/nav.json; then
+          # The fund is published after trading hours; avoid polling it throughout the day.
+          if [ "${{ github.event.schedule }}" != '2-59/5 0-6 * * 1-5' ]; then
+            python scripts/update_nav.py
+          fi
+          python scripts/update_nikkei.py
+          if git diff --quiet -- data/nav.json data/nikkei.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add data/nav.json
-            git commit -m 'Update official fund NAV'
+            git add data/nav.json data/nikkei.json
+            git commit -m 'Update market data'
             git push origin HEAD:main
           fi
       - name: Package public assets

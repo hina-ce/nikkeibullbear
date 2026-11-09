@@ -12,6 +12,13 @@ const data = {
   ],
 };
 const storageKey = `bull43:${new URL("../data/nav.json", import.meta.url).pathname}`;
+const indexStorageKey = `bull43:${new URL("../data/nikkei.json", import.meta.url).pathname}`;
+const indexData = () => ({
+  symbol: "^N225", sourceUrl: "https://finance.yahoo.com/quote/%5EN225/", currency: "JPY", delayMinutes: null,
+  fetchedAt: "2026-11-09T02:05:00Z",
+  quote: { date: "2026-11-09", asOf: "2026-11-09T02:00:00Z", price: 79, previousClose: 80, isClose: false },
+  closes: [{ date: "2026-11-04", close: 100 }, { date: "2026-11-05", close: 90 }, { date: "2026-11-06", close: 80 }],
+});
 let importId = 0;
 
 class Element {
@@ -34,11 +41,12 @@ async function withBrowser(options, check) {
   const previous = keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]);
   const originalWarn = console.warn;
   const NativeDate = Date;
-  let now = "2026-11-08T03:00:00Z";
+  let now = options.now ?? "2026-11-08T03:00:00Z";
   const elements = new Map();
   const intervals = [];
   const listeners = new Map();
   const storage = new Map(options.saved ? [[storageKey, JSON.stringify(options.saved)]] : []);
+  if (options.savedIndex) storage.set(indexStorageKey, JSON.stringify(options.savedIndex));
   const calls = [];
   const document = {
     visibilityState: "visible",
@@ -57,6 +65,10 @@ async function withBrowser(options, check) {
     },
     fetch: async (...args) => {
       calls.push(args);
+      if (args[0].pathname.endsWith("nikkei.json")) {
+        if (options.failIndex || options.fail) throw new Error("index unavailable");
+        return { ok: true, json: async () => options.indexPayload ?? indexData() };
+      }
       if (options.reply) return options.reply(...args);
       if (options.fail) throw new Error("network unavailable");
       return { ok: true, json: async () => options.payload ?? data };
@@ -89,8 +101,8 @@ test("loading state, actual rendered rows, and reload fetching published JSON", 
   assert.equal(elements.get("quote").attributes["aria-busy"], "false");
   assert.ok(storage.has(storageKey));
   await elements.get("reload").listeners.get("click")();
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1][1].cache, "no-store");
+  assert.equal(calls.filter(([url]) => url.pathname.endsWith("nav.json")).length, 2);
+  assert.ok(calls.every(([, options]) => options.cache === "no-store"));
 }));
 
 test("loading state is visible until a pending fetch completes", async () => {
@@ -144,3 +156,47 @@ test("a visible app switches its period after Japanese Monday midnight", () => w
   assert.equal(elements.get("history-rows").children.length, 1);
   assert.match(elements.get("period").textContent, /11\/6 〜 11\/9/);
 }));
+
+test("matching index declines get the prominent condition card", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements }) => {
+  await load();
+  assert.equal(elements.get("signal-title").textContent, "条件一致");
+  assert.equal(elements.get("signal").className, "signal signal-match");
+  assert.equal(elements.get("nikkei-price").textContent, "79.00");
+  assert.match(elements.get("nikkei-change").textContent, /-1\.00円 \(-1\.25%\)/);
+  assert.match(elements.get("friday-condition").textContent, /11\/6.*-10\.00円/);
+  assert.match(elements.get("nikkei-delay").textContent, /遅延あり/);
+  assert.match(elements.get("nikkei-asof").textContent, /11:00/);
+}));
+
+test("offline events immediately clear the highlight even when the quote is otherwise fresh", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements, listeners }) => {
+  await load();
+  listeners.get("offline")();
+  assert.equal(elements.get("signal-title").textContent, "判定保留");
+  assert.equal(elements.get("signal").className, "signal");
+}));
+
+test("index errors are independent of fund loading and saved quotes cannot highlight", () => withBrowser({ now: "2026-11-09T02:06:00Z", failIndex: true, savedIndex: indexData() }, async ({ load, elements }) => {
+  await load();
+  assert.equal(elements.get("latest-nav").textContent, "48,950");
+  assert.equal(elements.get("nikkei-price").textContent, "79.00");
+  assert.equal(elements.get("signal-title").textContent, "判定保留");
+  assert.match(elements.get("nikkei-notice").textContent, /保存済み/);
+}));
+
+test("an intraday highlight expires without requiring a reload", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements, intervals, setNow }) => {
+  await load();
+  setNow("2026-11-09T02:21:00Z");
+  intervals[0]();
+  assert.equal(elements.get("signal-title").textContent, "判定保留");
+  assert.equal(elements.get("signal").className, "signal");
+}));
+
+test("an upward index leaves the condition card unhighlighted", () => {
+  const indexPayload = indexData();
+  indexPayload.quote.price = 81;
+  return withBrowser({ now: "2026-11-09T02:06:00Z", indexPayload }, async ({ load, elements }) => {
+    await load();
+    assert.equal(elements.get("signal-title").textContent, "条件未一致");
+    assert.equal(elements.get("signal").className, "signal");
+  });
+});

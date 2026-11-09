@@ -35,7 +35,7 @@ test("all precached assets stay under the repository subdirectory", async () => 
   let completion;
   events.get("install")({ waitUntil: (promise) => { completion = promise; } });
   await completion;
-  assert.equal(added.length, 8);
+  assert.equal(added.length, 9);
   assert.ok(added.every((request) => request.url.startsWith(scope)));
   assert.ok(added.some((request) => request.url.endsWith("nav.mjs")));
 });
@@ -51,7 +51,7 @@ test("offline directory and index navigations return the cached app shell", asyn
 
 test("NAV requests and other sites are never served from an old static cache", () => {
   const { events, scope } = worker();
-  for (const url of [scope + "data/nav.json", "https://example.com/other/app.js", "https://other.com/bull43/app.js"]) {
+  for (const url of [scope + "data/nav.json", scope + "data/nikkei.json", "https://example.com/other/app.js", "https://other.com/bull43/app.js"]) {
     let intercepted = false;
     events.get("fetch")({ request: { method: "GET", mode: "cors", url }, respondWith: () => { intercepted = true; } });
     assert.equal(intercepted, false);

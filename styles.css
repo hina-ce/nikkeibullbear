@@ -52,6 +52,21 @@ h1 { font-size: 15px; line-height: 1.4; letter-spacing: -.04em; }
 .messages { margin: 14px 0 28px; }
 .notice { padding: 11px 13px; border: 1px solid #ecdba9; border-radius: 9px; background: #fffbef; color: #775c21; font-size: 12px; line-height: 1.7; }
 .publication-note { color: var(--muted); font-size: 11px; line-height: 1.7; margin: 8px 2px 0; }
+.nikkei-card { margin: 24px 0 32px; padding: 20px 18px; border: 1px solid var(--line); border-radius: 16px; }
+.nikkei-card h2 { font-size: 15px; font-weight: 650; }
+.nikkei-price { display: flex; align-items: baseline; gap: 6px; margin: 14px 0 8px; font-size: clamp(27px, 8vw, 36px); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
+#nikkei-change { font-size: 13px; font-weight: 600; margin-bottom: 13px; }
+.market-time { color: var(--muted); font-size: 10px; line-height: 1.8; }
+.signal { margin-top: 18px; padding: 14px 12px; border-radius: 10px; background: #f5f6f8; border: 2px solid transparent; }
+.signal h3 { margin: 0; font-size: 15px; }
+#signal-summary { margin-top: 7px; font-size: 11px; line-height: 1.7; color: #59657a; }
+.signal-match { background: #fff2ce; border-color: #d48209; box-shadow: 0 0 0 3px #fff8e6; }
+.signal-match h3 { color: #8a4800; font-size: 20px; }
+.signal-match #signal-summary { color: #74450d; font-weight: 600; }
+.conditions { margin: 12px 0 0; padding: 0; list-style: none; font-size: 11px; line-height: 1.8; }
+.conditions li + li { margin-top: 5px; }
+.condition-yes { font-weight: 650; }
+.condition-unknown { color: var(--muted); }
 .section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 16px; }
 .section-heading h2 { font-size: 16px; font-weight: 650; }
 #period { color: var(--muted); font-size: 11px; }
