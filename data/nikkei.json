@@ -2,20 +2,16 @@
   "symbol": "^N225",
   "sourceUrl": "https://finance.yahoo.com/quote/%5EN225/",
   "currency": "JPY",
-  "fetchedAt": "2026-11-09T06:50:44Z",
+  "fetchedAt": "2026-11-10T03:31:50Z",
   "delayMinutes": null,
   "quote": {
-    "date": "2026-11-09",
-    "asOf": "2026-11-09T06:30:05Z",
-    "price": 58775.5,
-    "previousClose": 57434.77,
-    "isClose": true
+    "date": "2026-11-10",
+    "asOf": "2026-11-10T02:35:03Z",
+    "price": 60475.78,
+    "previousClose": 58775.5,
+    "isClose": false
   },
   "closes": [
-    {
-      "date": "2026-10-09",
-      "close": 69030.92
-    },
     {
       "date": "2026-10-13",
       "close": 67777.52
