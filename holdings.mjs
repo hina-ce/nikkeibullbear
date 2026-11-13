@@ -150,11 +150,31 @@ export function buildPortfolio(value, prices = [], today = japanDate()) {
     throw new Error("評価額が計算できる範囲を超えています。");
   }
   const profit = marketValue == null || !costKnown ? null : marketValue - purchaseValue;
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const monthRecords = records.filter((entry) => entry.date >= monthStart);
+  const monthlyInitial = portfolio.initial.date && portfolio.initial.date >= monthStart ? initialCost : 0;
+  const monthlyAdded = monthRecords.filter((entry) => entry.type === "buy").reduce((sum, entry) => sum + entry.amount, 0);
+  const monthlyWithdrawn = monthRecords.filter((entry) => entry.type === "sell").reduce((sum, entry) => sum + entry.amount, 0);
+  const priorRecord = records.filter((entry) => entry.date < monthStart).at(-1);
+  // Undated legacy positions are carried into the month until a start date is set.
+  const openingUnits = priorRecord ? priorRecord.unitsAfter
+    : portfolio.initial.date && portfolio.initial.date >= monthStart ? 0 : portfolio.initial.units;
+  const openingQuote = prices.filter((price) => price.date < monthStart).at(-1) ?? null;
+  const openingValue = openingUnits === 0 ? 0 : openingUnits == null || !openingQuote ? null : openingUnits / 10000 * openingQuote.nav;
+  if (openingValue != null && (!Number.isFinite(openingValue) || openingValue > Number.MAX_SAFE_INTEGER)) {
+    throw new Error("月初繰越評価額が計算できる範囲を超えています。");
+  }
+  const monthlyInvested = monthlyInitial + monthlyAdded;
   return {
     portfolio, initialCost, invested, added, withdrawn,
     units: unitsKnown ? units : null, averageCost, purchaseValue: unitsKnown && costKnown ? purchaseValue : null,
     latest, marketValue, profit, profitRate: profit == null || !purchaseValue ? null : profit / purchaseValue * 100,
     totalProfit: marketValue == null ? null : marketValue + withdrawn - invested,
+    monthly: {
+      start: monthStart, end: today, initialCost: monthlyInitial, added: monthlyAdded,
+      invested: monthlyInvested, withdrawn: monthlyWithdrawn, openingUnits, openingValue, openingQuote,
+      profit: marketValue == null || openingValue == null ? null : marketValue + monthlyWithdrawn - monthlyInvested - openingValue,
+    },
     records, pending, errors,
   };
 }

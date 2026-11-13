@@ -43,7 +43,89 @@ test("dated buys and withdrawals retain cumulative cash flows and remaining cost
   assert.equal(result.marketValue, 16000);
   assert.equal(result.profit, 6000);
   assert.equal(result.totalProfit, 7000);
+  assert.equal(result.monthly.invested, 12000);
+  assert.equal(result.monthly.withdrawn, 3000);
+  assert.equal(result.monthly.openingValue, 0);
+  assert.equal(result.monthly.profit, 7000);
   assert.deepEqual(result.records.map((entry) => entry.id), ["buy", "sell"]);
+});
+
+test("monthly cash totals reset while positions and cost carry forward across months", () => {
+  const portfolio = account([
+    { id: "prior", type: "buy", date: "2026-10-28", amount: 2000 },
+    { id: "nov-buy", type: "buy", date: "2026-11-02", amount: 3000 },
+    { id: "nov-sell", type: "sell", date: "2026-11-02", amount: 3000 },
+  ]);
+  portfolio.initial.date = "2026-10-01";
+  const history = [
+    { date: "2026-10-28", nav: 10000 }, { date: "2026-10-30", nav: 12000 },
+    { date: "2026-11-02", nav: 15000 }, { date: "2026-11-30", nav: 18000 },
+    { date: "2026-12-01", nav: 20000 },
+  ];
+  const original = structuredClone(portfolio);
+  const november = buildPortfolio(portfolio, history, "2026-11-30");
+  assert.equal(november.monthly.invested, 3000);
+  assert.equal(november.monthly.withdrawn, 3000);
+  assert.equal(november.monthly.openingValue, 14400);
+  assert.equal(november.monthly.profit, 7200);
+  const december = buildPortfolio(portfolio, history, "2026-12-01");
+  assert.equal(december.monthly.invested, 0);
+  assert.equal(december.monthly.withdrawn, 0);
+  assert.equal(december.monthly.openingValue, 21600);
+  assert.equal(december.monthly.profit, 2400);
+  assert.equal(december.units, november.units);
+  assert.equal(december.purchaseValue, november.purchaseValue);
+  assert.equal(december.records.length, 3);
+  assert.deepEqual(portfolio, original);
+});
+
+test("a new month's profit starts at zero before the first new NAV is published", () => {
+  const portfolio = account([buy, sell]);
+  const result = buildPortfolio(portfolio, prices, "2026-12-01");
+  assert.equal(result.monthly.start, "2026-12-01");
+  assert.equal(result.monthly.invested, 0);
+  assert.equal(result.monthly.withdrawn, 0);
+  assert.equal(result.monthly.profit, 0);
+  assert.equal(result.units, 10000);
+});
+
+test("January uses the last actual December NAV across year-end holidays", () => {
+  const portfolio = account();
+  portfolio.initial.date = "2026-12-01";
+  const history = [{ date: "2026-12-30", nav: 12000 }, { date: "2027-01-04", nav: 13000 }];
+  const result = buildPortfolio(portfolio, history, "2027-01-04");
+  assert.equal(result.monthly.start, "2027-01-01");
+  assert.equal(result.monthly.openingQuote.date, "2026-12-30");
+  assert.equal(result.monthly.invested, 0);
+  assert.equal(result.monthly.openingValue, 12000);
+  assert.equal(result.monthly.profit, 1000);
+});
+
+test("undated legacy holdings are carried forward rather than counted as a new monthly investment", () => {
+  const result = buildPortfolio({ units: 10000, averageCost: 10000 }, [
+    { date: "2026-10-30", nav: 12000 }, { date: today, nav: 16000 },
+  ], today);
+  assert.equal(result.monthly.initialCost, 0);
+  assert.equal(result.monthly.invested, 0);
+  assert.equal(result.monthly.profit, 4000);
+});
+
+test("missing opening data never invents a monthly profit even if today's units are corrected", () => {
+  const portfolio = account([
+    { id: "pending", type: "buy", date: "2026-10-29", amount: 1000 },
+    { id: "actual", type: "adjustment", date: today, units: 11000 },
+    { ...buy, date: today, amount: 1000 },
+  ]);
+  portfolio.initial.date = "2026-10-01";
+  const result = buildPortfolio(portfolio, [
+    { date: "2026-10-30", nav: 12000 }, { date: today, nav: 10000 },
+  ], today);
+  assert.equal(result.marketValue, 12000);
+  assert.equal(result.monthly.invested, 1000);
+  assert.equal(result.monthly.openingValue, null);
+  assert.equal(result.monthly.profit, null);
+  const noPriorNav = buildPortfolio({ units: 10000, averageCost: 10000 }, prices, today);
+  assert.equal(noPriorNav.monthly.profit, null);
 });
 
 test("full liquidation keeps the recovered profit after holdings become zero", () => {

@@ -209,7 +209,7 @@ const tradeData = {
   fundId: FUND_ID, sourceUrl: SOURCE_URL,
   prices: [{ date: "2026-11-04", nav: 10000 }, { date: "2026-11-05", nav: 15000 }, { date: "2026-11-06", nav: 16000 }],
 };
-const initialPosition = { units: 10000, averageCost: 10000 };
+const initialPosition = { version: 2, initial: { units: 10000, averageCost: 10000, date: "2026-11-01" }, transactions: [] };
 const click = (elements, id) => elements.get(id).listeners.get("click")();
 
 test("repeated 1,000-yen clicks and an amount step record cash flows, then cancel and undo", () => withBrowser({ savedHolding: initialPosition, payload: tradeData }, async ({ load, elements, storage }) => {
@@ -303,4 +303,34 @@ test("editing the initial position retains previously recorded investment histor
   assert.equal(JSON.parse(storage.get(holdingsKey)).transactions.length, 1);
   assert.equal(elements.get("total-invested").textContent, "21,000円");
   assert.equal(elements.get("holding-units").textContent, "21,000口");
+}));
+
+test("monthly totals reset at Japanese midnight without deleting holdings, history or saved data", () => withBrowser({ savedHolding: initialPosition, payload: tradeData, now: "2026-11-30T14:59:59Z" }, async ({ load, elements, storage, intervals, setNow }) => {
+  await load();
+  elements.get("trade-date").value = "2026-11-04";
+  click(elements, "invest-button");
+  assert.equal(elements.get("total-invested").textContent, "11,000円");
+  assert.equal(elements.get("total-profit").textContent, "+6,600円");
+  const saved = storage.get(holdingsKey);
+  setNow("2026-11-30T15:00:00Z");
+  intervals[0]();
+  assert.match(elements.get("investment-period").textContent, /2026\/12\/01/);
+  assert.equal(elements.get("total-invested").textContent, "0円");
+  assert.equal(elements.get("total-withdrawn").textContent, "0円");
+  assert.equal(elements.get("total-profit").textContent, "0円");
+  assert.equal(elements.get("holding-units").textContent, "11,000口");
+  assert.equal(elements.get("holding-profit").textContent, "+6,600円");
+  assert.equal(elements.get("transaction-rows").children.length, 1);
+  assert.equal(storage.get(holdingsKey), saved);
+}));
+
+test("monthly cash totals also reset when price fetching has failed", () => withBrowser({ savedHolding: initialPosition, fail: true, now: "2026-11-30T14:59:59Z" }, async ({ load, elements, intervals, setNow }) => {
+  await load();
+  assert.equal(elements.get("total-invested").textContent, "10,000円");
+  setNow("2026-11-30T15:00:00Z");
+  intervals[0]();
+  assert.equal(elements.get("total-invested").textContent, "0円");
+  assert.equal(elements.get("total-withdrawn").textContent, "0円");
+  assert.equal(elements.get("holding-units").textContent, "10,000口");
+  assert.equal(elements.get("total-profit").textContent, "—");
 }));

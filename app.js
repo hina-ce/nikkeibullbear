@@ -64,6 +64,7 @@ function render() {
 }
 
 function renderHolding() {
+  renderedDate = japanDate();
   for (const id of ["holding-units", "holding-average", "holding-cost", "holding-value", "holding-profit", "holding-rate", "total-invested", "total-withdrawn", "total-profit"]) {
     element(id).textContent = "—";
   }
@@ -78,15 +79,18 @@ function renderHolding() {
     const result = buildPortfolio(portfolio, dataset?.prices);
     element("holding-units").textContent = result.units == null ? "計算待ち" : `${money.format(result.units)}口`;
     element("holding-average").textContent = result.averageCost == null ? "—" : `${averageMoney.format(result.averageCost)}円`;
-    for (const [id, amount] of [["holding-cost", result.purchaseValue], ["holding-value", result.marketValue], ["total-invested", result.invested], ["total-withdrawn", result.withdrawn]]) {
+    for (const [id, amount] of [["holding-cost", result.purchaseValue], ["holding-value", result.marketValue], ["total-invested", result.monthly.invested], ["total-withdrawn", result.monthly.withdrawn]]) {
       element(id).textContent = amount == null ? "—" : `${money.format(amount)}円`;
     }
-    for (const [id, amount, unit, digits] of [["holding-profit", result.profit, "円", 0], ["holding-rate", result.profitRate, "%", 2], ["total-profit", result.totalProfit, "円", 0]]) {
+    for (const [id, amount, unit, digits] of [["holding-profit", result.profit, "円", 0], ["holding-rate", result.profitRate, "%", 2], ["total-profit", result.monthly.profit, "円", 0]]) {
       element(id).textContent = amount == null ? "—" : `${signedNumber(amount, digits)}${unit}`;
       element(id).className = `change ${direction(amount)}`;
     }
-    element("investment-period").textContent = `累計期間：${portfolio.initial.date ? portfolio.initial.date.replaceAll("-", "/") : "初期保有（開始日未設定）"} 〜 ${japanDate().replaceAll("-", "/")}`;
-    element("investment-breakdown").textContent = `初期取得額 ${money.format(result.initialCost)}円 ＋ 追加投資 ${money.format(result.added)}円`;
+    element("investment-period").textContent = `今月の集計：${result.monthly.start.replaceAll("-", "/")} 〜 ${result.monthly.end.replaceAll("-", "/")}`;
+    element("investment-breakdown").textContent = `今月の初期取得額 ${money.format(result.monthly.initialCost)}円 ＋ 追加投資 ${money.format(result.monthly.added)}円`;
+    element("monthly-opening").textContent = result.monthly.openingValue == null
+      ? "月初の口数または前月末までの基準価額を確認できないため、今月の損益は計算できません。"
+      : `月初繰越評価額 ${money.format(result.monthly.openingValue)}円${result.monthly.openingUnits && result.monthly.openingQuote ? `（${result.monthly.openingQuote.date.replaceAll("-", "/")}の基準価額）` : ""}`;
     const basis = result.latest ? `評価基準：${result.latest.date.replaceAll("-", "/")} ${money.format(result.latest.nav)}円 / 1万口` : "基準価額を取得すると損益を表示します。";
     element("holding-basis").textContent = result.errors.length ? result.errors[0].message
       : result.pending.length && result.units == null ? `基準価額待ち ${result.pending.length}件。約定日の基準価額が公表されると口数・損益を計算します。休業日を選んだ場合は履歴を取り消して登録し直してください。`
@@ -315,10 +319,16 @@ window.addEventListener("offline", () => {
   notice("connection-notice", dataset ? "オフラインです。保存済みデータを表示しています。" : "オフラインです。オンラインに戻ってから再読込してください。");
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") loadPrices();
+  if (document.visibilityState === "visible") {
+    renderHolding();
+    loadPrices();
+  }
 });
 setInterval(() => {
-  if (dataset && document.visibilityState === "visible" && japanDate() !== renderedDate) render();
+  if (document.visibilityState === "visible" && japanDate() !== renderedDate) {
+    if (dataset) render();
+    else renderHolding();
+  }
 }, 30000);
 
 element("trade-date").value = japanDate();

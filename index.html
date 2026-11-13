@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="4.3倍ブル" />
-    <meta name="description" content="楽天日本株4.3倍ブルの基準価額・保有状況・評価損益と、投資・回収の累計を確認。" />
+    <meta name="description" content="楽天日本株4.3倍ブルの基準価額・保有状況・評価損益と、今月の投資・回収を確認。" />
     <title>4.3倍ブル | 保有状況</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
@@ -50,12 +50,12 @@
 
       <section class="holdings-card" aria-labelledby="holdings-heading">
         <h2 id="holdings-heading">保有状況</h2>
-        <p id="investment-period" class="publication-note">累計期間：初期保有の設定後に表示</p>
+        <p id="investment-period" class="publication-note">今月の集計：初期保有の設定後に表示</p>
         <dl class="holding-values cash-totals">
-          <div><dt>累計投資額</dt><dd id="total-invested">—</dd></div>
-          <div><dt>累計回収額</dt><dd id="total-withdrawn">—</dd></div>
+          <div><dt>今月の投資額</dt><dd id="total-invested">—</dd></div>
+          <div><dt>今月の回収額</dt><dd id="total-withdrawn">—</dd></div>
         </dl>
-        <p id="investment-breakdown" class="publication-note">累計投資額には初期保有分の取得金額を含みます。</p>
+        <p id="investment-breakdown" class="publication-note">毎月1日に集計をリセット。初期取得額は記録開始月に含めます。</p>
         <dl class="holding-values">
           <div><dt>保有口数 <small>概算・手動補正可</small></dt><dd id="holding-units">—</dd></div>
           <div><dt>平均取得単価 <small>1万口あたり</small></dt><dd id="holding-average">—</dd></div>
@@ -68,9 +68,10 @@
           <p id="holding-rate" class="change neutral">—</p>
         </div>
         <div class="holding-profit total-profit">
-          <p>累計損益（回収済みを含む）</p>
+          <p>今月の損益（回収済みを含む）</p>
           <p id="total-profit" class="change neutral">—</p>
-          <p class="table-note">評価額 ＋ 累計回収額 − 累計投資額</p>
+          <p class="table-note">評価額 ＋ 今月の回収額 − 今月の投資額 − 月初繰越評価額</p>
+          <p id="monthly-opening" class="publication-note">月初繰越評価額 —</p>
         </div>
         <p id="holding-basis" class="publication-note">最新の公表済み基準価額で計算します。</p>
         <p class="table-note">金額は円単位に四捨五入。税金・売却手数料等は含みません。</p>
@@ -122,7 +123,7 @@
             <input id="average-input" name="averageCost" type="number" inputmode="decimal" min="0" step="any" required placeholder="例：45000" />
             <button type="submit">初期保有を保存</button>
           </form>
-          <p class="publication-note">開始時点の保有を設定します。保有なしの場合は口数・単価ともに0。初期値を変更しても投資・回収の履歴は残ります。</p>
+          <p class="publication-note">開始時点の保有を設定します。保有なしの場合は口数・単価ともに0。開始日未設定の初期保有は月初への繰越として扱います。初期値を変更しても投資・回収の履歴は残ります。</p>
         </details>
       </section>
 
