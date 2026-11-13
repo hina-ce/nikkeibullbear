@@ -2,12 +2,12 @@
   "symbol": "^N225",
   "sourceUrl": "https://finance.yahoo.com/quote/%5EN225/",
   "currency": "JPY",
-  "fetchedAt": "2026-11-13T01:47:36Z",
+  "fetchedAt": "2026-11-13T02:02:22Z",
   "delayMinutes": null,
   "quote": {
     "date": "2026-11-13",
-    "asOf": "2026-11-13T01:32:35Z",
-    "price": 61862.0,
+    "asOf": "2026-11-13T01:47:20Z",
+    "price": 61831.87,
     "previousClose": 61248.59,
     "isClose": false
   },
