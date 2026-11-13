@@ -1,4 +1,4 @@
-import { isISODate, japanDate, previousWeekFriday } from "./nav.mjs";
+import { isISODate, japanDate } from "./nav.mjs";
 
 export const NIKKEI_SOURCE = "https://finance.yahoo.com/quote/%5EN225/";
 const positive = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -31,35 +31,14 @@ export function validateNikkei(data) {
   return data;
 }
 
-export function buildNikkeiView(data, { now = new Date(), online = true, verified = true } = {}) {
+export function buildNikkeiView(data, { now = new Date() } = {}) {
   validateNikkei(data);
   const today = japanDate(now);
-  const fridayDate = previousWeekFriday(today);
+  // Even after the market closes, today's record is excluded until JST midnight.
   const completed = data.closes.filter((close) => close.date < today);
-  const withDelta = completed.map((close, index) => ({
-    ...close, delta: index ? Number((close.close - completed[index - 1].close).toFixed(2)) : null,
-  }));
-  const friday = withDelta.find((close) => close.date === fridayDate) ?? null;
-  const previous = withDelta.at(-1) ?? null;
-  const delta = Number((data.quote.price - data.quote.previousClose).toFixed(2));
-  const rate = delta / data.quote.previousClose * 100;
-  const quoteAge = now.getTime() - Date.parse(data.quote.asOf);
-  const fetchedAge = now.getTime() - Date.parse(data.fetchedAt);
-  const weekend = [0, 6].includes(new Date(`${today}T00:00:00Z`).getUTCDay());
-  let holdReason = "";
-  if (!online || !verified) holdReason = "通信を確認できないため、保存値での判定を保留しています。";
-  else if (data.quote.date !== today || weekend) holdReason = "本日分のデータがないため、判定を保留しています。";
-  else if (quoteAge < -60000 || fetchedAge < -60000) holdReason = "データの時刻を確認できないため、判定を保留しています。";
-  else if (!data.quote.isClose && (quoteAge > 35 * 60000 || fetchedAge > 15 * 60000)) holdReason = "データが古いため、判定を保留しています。";
-  const down = (record) => record?.delta == null ? null : record.delta < 0;
-  const checks = [down(friday), down(previous), holdReason ? null : delta < 0];
-  const state = holdReason || checks.includes(null) ? "waiting" : checks.every(Boolean) ? "match" : "no-match";
-  if (!holdReason && checks.includes(null)) holdReason = "前週金曜または直前営業日の履歴が不足しているため、判定を保留しています。";
-  return { today, fridayDate, friday, previous, delta, rate, checks, state, holdReason };
-}
-
-export function japanTime(value) {
-  return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-  }).format(new Date(value));
+  const latest = completed.at(-1) ?? null;
+  const previous = completed.at(-2) ?? null;
+  const delta = latest && previous ? Number((latest.close - previous.close).toFixed(2)) : null;
+  const rate = delta == null ? null : delta / previous.close * 100;
+  return { today, latest, delta, rate };
 }

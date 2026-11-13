@@ -56,17 +56,38 @@ h1 { font-size: 15px; line-height: 1.4; letter-spacing: -.04em; }
 .nikkei-card h2 { font-size: 15px; font-weight: 650; }
 .nikkei-price { display: flex; align-items: baseline; gap: 6px; margin: 14px 0 8px; font-size: clamp(27px, 8vw, 36px); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
 #nikkei-change { font-size: 13px; font-weight: 600; margin-bottom: 13px; }
-.market-time { color: var(--muted); font-size: 10px; line-height: 1.8; }
-.signal { margin-top: 18px; padding: 14px 12px; border-radius: 10px; background: #f5f6f8; border: 2px solid transparent; }
-.signal h3 { margin: 0; font-size: 15px; }
-#signal-summary { margin-top: 7px; font-size: 11px; line-height: 1.7; color: #59657a; }
-.signal-match { background: #fff2ce; border-color: #d48209; box-shadow: 0 0 0 3px #fff8e6; }
-.signal-match h3 { color: #8a4800; font-size: 20px; }
-.signal-match #signal-summary { color: #74450d; font-weight: 600; }
-.conditions { margin: 12px 0 0; padding: 0; list-style: none; font-size: 11px; line-height: 1.8; }
-.conditions li + li { margin-top: 5px; }
-.condition-yes { font-weight: 650; }
-.condition-unknown { color: var(--muted); }
+.holdings-card { margin-bottom: 32px; padding: 20px 18px; border: 1px solid var(--line); border-radius: 16px; }
+.holdings-card h2 { font-size: 15px; font-weight: 650; }
+.holding-values { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 12px; margin: 20px 0; }
+.holding-values div { min-width: 0; }
+.holding-values dt { color: var(--muted); font-size: 11px; }
+.holding-values dt small { display: block; margin-top: 3px; font-size: 10px; }
+.holding-values dd { margin: 7px 0 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.holding-profit { padding-top: 16px; border-top: 1px solid var(--line); }
+.holding-profit > p:first-child { font-size: 12px; color: var(--muted); }
+#holding-profit, #total-profit { margin-top: 8px; font-size: clamp(24px, 7vw, 32px); font-weight: 700; overflow-wrap: anywhere; }
+#holding-rate { margin-top: 4px; font-size: 13px; }
+.total-profit { margin-top: 18px; }
+.cash-totals { padding: 14px 12px; border-radius: 9px; background: #f7f8fa; margin-bottom: 8px; }
+.holdings-card details { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 12px; }
+.holdings-card summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 13px; }
+.holdings-card form, .transaction-entry { display: grid; gap: 8px; margin-top: 12px; }
+.transaction-entry { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.transaction-entry h3 { margin: 0 0 8px; font-size: 14px; }
+.holdings-card label { font-size: 12px; }
+.holdings-card input { width: 100%; min-width: 0; min-height: 44px; padding: 10px 8px; margin-bottom: 8px; border: 1px solid #c9d0db; border-radius: 7px; color: var(--ink); background: #fff; font: inherit; font-size: 16px; }
+.holdings-card button { min-height: 44px; border: 0; border-radius: 7px; background: var(--ink); color: #fff; font-size: 13px; }
+.amount-control { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.amount-control button { padding: 0 8px; background: #edf0f5; color: var(--ink); font-size: 12px; }
+.amount-control input { text-align: center; }
+.trade-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#withdraw-button { background: #edf0f5; color: var(--ink); border: 1px solid #c9d0db; }
+.transaction-list { padding: 0; margin: 4px 0 0; list-style: none; }
+.transaction-list li { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.transaction-list li > div { min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
+.transaction-list button, .holdings-card .secondary-button { padding: 0 10px; background: #edf0f5; color: var(--ink); flex-shrink: 0; }
+.transaction-list .publication-note { margin: 3px 0 0; }
+.holdings-card .secondary-button { margin-top: 10px; }
 .section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 16px; }
 .section-heading h2 { font-size: 16px; font-weight: 650; }
 #period { color: var(--muted); font-size: 11px; }

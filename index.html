@@ -7,8 +7,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="4.3倍ブル" />
-    <meta name="description" content="楽天日本株4.3倍ブルの基準価額と前日比を、前週金曜日から確認。" />
-    <title>4.3倍ブル | 基準価額</title>
+    <meta name="description" content="日経平均の確定終値と、楽天日本株4.3倍ブルの基準価額・保有状況・評価損益を確認。" />
+    <title>4.3倍ブル | 保有状況</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
@@ -20,7 +20,7 @@
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">4.3</span>
           <div>
-            <p class="brand-caption">基準価額ウォッチ</p>
+            <p class="brand-caption">基準価額・保有状況</p>
             <h1>楽天日本株4.3倍ブル</h1>
           </div>
         </div>
@@ -50,25 +50,91 @@
 
       <section class="nikkei-card" id="nikkei" aria-labelledby="nikkei-heading" aria-busy="true">
         <div class="quote-heading">
-          <h2 id="nikkei-heading">日経平均株価</h2>
+          <h2 id="nikkei-heading">日経平均 終値</h2>
           <span id="nikkei-date" class="unit">確認中</span>
         </div>
         <p class="nikkei-price"><span id="nikkei-price">—</span><span class="yen">円</span></p>
         <p id="nikkei-change" class="change neutral">前日比 —</p>
-        <p id="nikkei-asof" class="market-time">配信元時刻 —</p>
-        <p id="nikkei-fetched" class="market-time">取得時刻 —</p>
-        <p id="nikkei-delay" class="market-time">遅延データ · 日中は約5分ごとに取得</p>
+        <p class="table-note">前営業日までの確定終値を表示</p>
         <p id="nikkei-notice" class="publication-note" aria-live="polite">日経平均を読み込んでいます…</p>
+      </section>
 
-        <div id="signal" class="signal" role="status" aria-live="polite" aria-atomic="true">
-          <h3 id="signal-title">判定保留</h3>
-          <p id="signal-summary">日経平均のデータを確認しています。</p>
-          <ul class="conditions">
-            <li id="friday-condition">前週金曜の下落：確認中</li>
-            <li id="previous-condition">直前営業日の下落：確認中</li>
-            <li id="today-condition">本日の下落：確認中</li>
-          </ul>
+      <section class="holdings-card" aria-labelledby="holdings-heading">
+        <h2 id="holdings-heading">保有状況</h2>
+        <p id="investment-period" class="publication-note">累計期間：初期保有の設定後に表示</p>
+        <dl class="holding-values cash-totals">
+          <div><dt>累計投資額</dt><dd id="total-invested">—</dd></div>
+          <div><dt>累計回収額</dt><dd id="total-withdrawn">—</dd></div>
+        </dl>
+        <p id="investment-breakdown" class="publication-note">累計投資額には初期保有分の取得金額を含みます。</p>
+        <dl class="holding-values">
+          <div><dt>保有口数 <small>概算・手動補正可</small></dt><dd id="holding-units">—</dd></div>
+          <div><dt>平均取得単価 <small>1万口あたり</small></dt><dd id="holding-average">—</dd></div>
+          <div><dt>保有分の取得金額</dt><dd id="holding-cost">—</dd></div>
+          <div><dt>評価額</dt><dd id="holding-value">—</dd></div>
+        </dl>
+        <div class="holding-profit">
+          <p>保有分の評価損益</p>
+          <p id="holding-profit" class="change neutral">—</p>
+          <p id="holding-rate" class="change neutral">—</p>
         </div>
+        <div class="holding-profit total-profit">
+          <p>累計損益（回収済みを含む）</p>
+          <p id="total-profit" class="change neutral">—</p>
+          <p class="table-note">評価額 ＋ 累計回収額 − 累計投資額</p>
+        </div>
+        <p id="holding-basis" class="publication-note">最新の公表済み基準価額で計算します。</p>
+        <p class="table-note">金額は円単位に四捨五入。税金・売却手数料等は含みません。</p>
+        <p id="holding-status" class="publication-note" role="status">初期保有の口数と平均取得単価を入力してください。記録はこの端末のブラウザに保存します。</p>
+
+        <div class="transaction-entry">
+          <h3>投資・回収を記録</h3>
+          <label for="trade-date">約定日（基準価額が決まる日）</label>
+          <input id="trade-date" type="date" required />
+          <label for="trade-amount">金額（円・1,000円単位）</label>
+          <div class="amount-control">
+            <button id="amount-decrease" type="button" aria-label="金額を1,000円減らす">−1,000</button>
+            <input id="trade-amount" type="number" inputmode="numeric" min="1000" step="1000" value="1000" required />
+            <button id="amount-increase" type="button" aria-label="金額を1,000円増やす">＋1,000</button>
+          </div>
+          <div class="trade-buttons">
+            <button id="invest-button" type="button" disabled>1,000円を投資</button>
+            <button id="withdraw-button" type="button" disabled>1,000円を回収</button>
+          </div>
+          <p class="publication-note">ボタン1回で選択額を記録。口数は約定日の基準価額で概算します（1口単位に四捨五入）。未公表の場合は公表後に計算します。</p>
+        </div>
+
+        <details id="transaction-history">
+          <summary id="transaction-count">履歴（0件）</summary>
+          <ul id="transaction-rows" class="transaction-list"></ul>
+        </details>
+        <button id="undo-transaction" class="secondary-button" type="button" hidden>取消を戻す</button>
+
+        <details id="units-editor">
+          <summary>保有口数のずれを補正</summary>
+          <form id="correction-form" novalidate>
+            <label for="correction-date">補正日（その時点の口数）</label>
+            <input id="correction-date" type="date" required />
+            <label for="correction-units">実際の保有口数（口）</label>
+            <input id="correction-units" type="number" inputmode="numeric" min="0" step="1" required />
+            <button id="correction-save" type="submit" disabled>口数を補正</button>
+          </form>
+          <p class="publication-note">証券会社の表示に合わせて入力してください。投資額・回収額は変えず、以後の口数計算に反映します。同じ日付の売買・補正は記録した順に反映します。</p>
+        </details>
+
+        <details id="holdings-editor" open>
+          <summary>初期保有を設定・変更</summary>
+          <form id="holdings-form" novalidate>
+            <label for="initial-date">記録開始日（任意）</label>
+            <input id="initial-date" type="date" />
+            <label for="units-input">初期保有口数（口）</label>
+            <input id="units-input" name="units" type="number" inputmode="numeric" min="0" step="1" required placeholder="例：100000" />
+            <label for="average-input">初期平均取得単価（円 / 1万口）</label>
+            <input id="average-input" name="averageCost" type="number" inputmode="decimal" min="0" step="any" required placeholder="例：45000" />
+            <button type="submit">初期保有を保存</button>
+          </form>
+          <p class="publication-note">開始時点の保有を設定します。保有なしの場合は口数・単価ともに0。初期値を変更しても投資・回収の履歴は残ります。</p>
+        </details>
       </section>
 
       <section class="history" aria-labelledby="history-heading">
@@ -88,7 +154,7 @@
       <footer>
         <a class="securities-link" href="https://www.rakuten-sec.co.jp/web/fund/detail/?ID=JP90C000CCD0" target="_blank" rel="noopener noreferrer">楽天証券で詳細を見る <span aria-hidden="true">↗</span></a>
         <p>出典：<a href="https://www.rakuten-toushin.co.jp/fund/nav/ribla43/" target="_blank" rel="noopener noreferrer">楽天投信投資顧問</a></p>
-        <p>日経平均：<a href="https://finance.yahoo.com/quote/%5EN225/" target="_blank" rel="noopener noreferrer">Yahoo Finance（遅延値）</a></p>
+        <p>日経平均：<a href="https://finance.yahoo.com/quote/%5EN225/" target="_blank" rel="noopener noreferrer">Yahoo Finance（終値）</a></p>
         <p>公表後、定期更新で反映します。</p>
       </footer>
       <noscript><p class="notice">基準価額の表示にはJavaScriptを有効にしてください。</p></noscript>

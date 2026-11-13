@@ -1,0 +1,159 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { buildPortfolio, calculateHolding, parseHolding, validateHolding, validatePortfolio } from "../holdings.mjs";
+
+test("holdings are valued per 10,000 units and show a profit or loss", () => {
+  const holding = parseHolding("100000", "45000");
+  const profit = calculateHolding(holding, 48950);
+  assert.equal(profit.purchaseValue, 450000);
+  assert.equal(profit.marketValue, 489500);
+  assert.equal(profit.profit, 39500);
+  assert.ok(Math.abs(profit.profitRate - 8.7777777778) < 1e-8);
+  const loss = calculateHolding(holding, 40000);
+  assert.equal(loss.profit, -50000);
+  assert.ok(loss.profitRate < 0);
+});
+
+const today = "2026-11-13";
+const prices = [
+  { date: "2026-11-09", nav: 10000 }, { date: "2026-11-10", nav: 15000 },
+  { date: "2026-11-11", nav: 12000 }, { date: "2026-11-12", nav: 15000 }, { date: today, nav: 16000 },
+];
+const account = (transactions = []) => ({
+  version: 2, initial: { units: 10000, averageCost: 10000, date: "2026-11-08" }, transactions,
+});
+const buy = { id: "buy", type: "buy", date: "2026-11-09", amount: 2000 };
+const sell = { id: "sell", type: "sell", date: "2026-11-10", amount: 3000 };
+
+test("legacy holdings upgrade without losing the initial position", () => {
+  assert.deepEqual(validatePortfolio({ units: 10000, averageCost: 10000 }, today), {
+    version: 2, initial: { units: 10000, averageCost: 10000, date: null }, transactions: [],
+  });
+});
+
+test("dated buys and withdrawals retain cumulative cash flows and remaining cost", () => {
+  const result = buildPortfolio(account([sell, buy]), prices, today);
+  assert.equal(result.initialCost, 10000);
+  assert.equal(result.added, 2000);
+  assert.equal(result.invested, 12000);
+  assert.equal(result.withdrawn, 3000);
+  assert.equal(result.units, 10000);
+  assert.equal(result.averageCost, 10000);
+  assert.equal(result.purchaseValue, 10000);
+  assert.equal(result.marketValue, 16000);
+  assert.equal(result.profit, 6000);
+  assert.equal(result.totalProfit, 7000);
+  assert.deepEqual(result.records.map((entry) => entry.id), ["buy", "sell"]);
+});
+
+test("full liquidation keeps the recovered profit after holdings become zero", () => {
+  const result = buildPortfolio(account([{ ...sell, amount: 15000 }]), prices, today);
+  assert.equal(result.units, 0);
+  assert.equal(result.marketValue, 0);
+  assert.equal(result.purchaseValue, 0);
+  assert.equal(result.profit, 0);
+  assert.equal(result.totalProfit, 5000);
+  assert.equal(result.withdrawn, 15000);
+});
+
+test("a unit correction changes valuation without changing cumulative investment or recovery", () => {
+  const correction = { id: "correction", type: "adjustment", date: "2026-11-11", units: 10010 };
+  const result = buildPortfolio(account([buy, sell, correction]), prices, today);
+  assert.equal(result.invested, 12000);
+  assert.equal(result.withdrawn, 3000);
+  assert.equal(result.purchaseValue, 10000);
+  assert.equal(result.units, 10010);
+  assert.equal(Math.round(result.marketValue), 16016);
+  assert.equal(Math.round(result.totalProfit), 7016);
+  assert.ok(Math.abs(result.averageCost - 9990.00999001) < 1e-6);
+});
+
+test("same-day trades recorded after a correction use the corrected units", () => {
+  const correction = { id: "correction", type: "adjustment", date: buy.date, units: 10001 };
+  const result = buildPortfolio(account([correction, buy]), prices, today);
+  assert.equal(result.units, 12001);
+  assert.deepEqual(result.records.map((entry) => entry.id), ["correction", "buy"]);
+});
+
+test("a missing execution-day NAV is pending, never substituted with a prior price", () => {
+  const pendingBuy = { ...buy, date: today };
+  const result = buildPortfolio(account([pendingBuy]), prices.slice(0, -1), today);
+  assert.equal(result.invested, 12000);
+  assert.equal(result.units, null);
+  assert.equal(result.marketValue, null);
+  assert.equal(result.totalProfit, null);
+  assert.equal(result.pending.length, 1);
+  const published = buildPortfolio(account([pendingBuy]), prices, today);
+  assert.equal(published.units, 11250);
+  assert.equal(published.pending.length, 0);
+});
+
+test("cash history and holdings survive missing price data without inventing a valuation", () => {
+  const result = buildPortfolio(account(), [], today);
+  assert.equal(result.units, 10000);
+  assert.equal(result.invested, 10000);
+  assert.equal(result.marketValue, null);
+});
+
+test("an actual-unit correction can value a pending buy without substituting a NAV", () => {
+  const pendingBuy = { ...buy, date: today };
+  const correction = { id: "actual", type: "adjustment", date: today, units: 11250 };
+  const result = buildPortfolio(account([pendingBuy, correction]), prices.slice(0, -1), today);
+  assert.equal(result.pending.length, 1);
+  assert.equal(result.units, 11250);
+  assert.equal(result.invested, 12000);
+  assert.equal(result.purchaseValue, 12000);
+  assert.equal(result.marketValue, 16875);
+  assert.equal(result.totalProfit, 4875);
+});
+
+test("an actual-unit correction after a pending withdrawal values cash returns while cost basis waits", () => {
+  const pendingSell = { ...sell, date: today };
+  const correction = { id: "actual", type: "adjustment", date: today, units: 8000 };
+  const result = buildPortfolio(account([pendingSell, correction]), prices.slice(0, -1), today);
+  assert.equal(result.units, 8000);
+  assert.equal(result.marketValue, 12000);
+  assert.equal(result.withdrawn, 3000);
+  assert.equal(result.totalProfit, 5000);
+  assert.equal(result.averageCost, null);
+  assert.equal(result.profit, null);
+});
+
+test("overdrawn withdrawals are detected and retain an inspectable cash history", () => {
+  const result = buildPortfolio(account([{ ...sell, amount: 16000 }]), prices, today);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0].message, /保有分を超え/);
+  assert.equal(result.marketValue, null);
+  assert.equal(result.withdrawn, 16000);
+});
+
+test("invalid cash steps, dates, types, duplicate IDs and fractional corrections are rejected", () => {
+  for (const entry of [
+    { ...buy, amount: 1500 }, { ...buy, amount: 0 }, { ...buy, amount: -1000 },
+    { ...buy, date: "2026-02-30" }, { ...buy, date: "2026-11-14" }, { ...buy, date: "2026-11-07" },
+    { ...buy, type: "unknown" }, { id: "units", type: "adjustment", date: today, units: 0.5 },
+  ]) assert.throws(() => validatePortfolio(account([entry]), today));
+  assert.throws(() => validatePortfolio(account([buy, buy]), today));
+});
+
+test("fractional average prices are preserved through calculation", () => {
+  const result = calculateHolding(parseHolding("12345", "45000.25"), 45001);
+  assert.ok(Math.abs(result.profit - 0.925875) < 1e-8);
+});
+
+test("zero holdings and break-even do not invent returns", () => {
+  assert.deepEqual(calculateHolding(parseHolding("0", "0"), 48950), {
+    purchaseValue: 0, marketValue: 0, profit: 0, profitRate: null,
+  });
+  assert.equal(calculateHolding(parseHolding("10000", "48950"), 48950).profit, 0);
+});
+
+test("empty, negative, fractional-unit, nonnumeric and unsafe holdings are rejected", () => {
+  for (const [units, average] of [["", "45000"], ["10000", ""], ["-1", "45000"], ["0.5", "45000"],
+    ["10000", "-1"], ["10000", "0"], ["abc", "45000"], ["10000", "Infinity"], ["9007199254740992", "1"]]) {
+    assert.throws(() => parseHolding(units, average));
+  }
+  assert.throws(() => validateHolding(null));
+  assert.throws(() => validateHolding({ units: "10000", averageCost: 45000 }));
+  assert.throws(() => calculateHolding({ units: Number.MAX_SAFE_INTEGER, averageCost: 45000 }, 48950));
+});

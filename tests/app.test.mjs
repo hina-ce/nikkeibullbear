@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
+import { readFile } from "node:fs/promises";
 import { FUND_ID, SOURCE_URL } from "../nav.mjs";
 
 const data = {
@@ -13,6 +14,9 @@ const data = {
 };
 const storageKey = `bull43:${new URL("../data/nav.json", import.meta.url).pathname}`;
 const indexStorageKey = `bull43:${new URL("../data/nikkei.json", import.meta.url).pathname}`;
+const holdingsKey = `bull43:holdings:${new URL("../", import.meta.url).pathname}`;
+const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const elementIds = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 const indexData = () => ({
   symbol: "^N225", sourceUrl: "https://finance.yahoo.com/quote/%5EN225/", currency: "JPY", delayMinutes: null,
   fetchedAt: "2026-11-09T02:05:00Z",
@@ -26,6 +30,7 @@ class Element {
   attributes = {};
   listeners = new Map();
   hidden = false;
+  value = "";
   _text = "";
   constructor(tag = "div") { this.tag = tag; }
   get textContent() { return this._text + this.children.map((child) => typeof child === "string" ? child : child.textContent).join(""); }
@@ -42,15 +47,16 @@ async function withBrowser(options, check) {
   const originalWarn = console.warn;
   const NativeDate = Date;
   let now = options.now ?? "2026-11-08T03:00:00Z";
-  const elements = new Map();
+  const elements = new Map(elementIds.map((id) => [id, new Element()]));
   const intervals = [];
   const listeners = new Map();
   const storage = new Map(options.saved ? [[storageKey, JSON.stringify(options.saved)]] : []);
   if (options.savedIndex) storage.set(indexStorageKey, JSON.stringify(options.savedIndex));
+  if (options.savedHolding) storage.set(holdingsKey, JSON.stringify(options.savedHolding));
   const calls = [];
   const document = {
     visibilityState: "visible",
-    getElementById(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); },
+    getElementById(id) { return elements.get(id) ?? null; },
     createElement: (tag) => new Element(tag),
     createDocumentFragment: () => new Element("fragment"),
     addEventListener: (name, callback) => listeners.set(`document:${name}`, callback),
@@ -157,46 +163,184 @@ test("a visible app switches its period after Japanese Monday midnight", () => w
   assert.match(elements.get("period").textContent, /11\/6 〜 11\/9/);
 }));
 
-test("matching index declines get the prominent condition card", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements }) => {
+test("the index shows only the prior confirmed session and its daily change", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements }) => {
   await load();
-  assert.equal(elements.get("signal-title").textContent, "条件一致");
-  assert.equal(elements.get("signal").className, "signal signal-match");
-  assert.equal(elements.get("nikkei-price").textContent, "79.00");
-  assert.match(elements.get("nikkei-change").textContent, /-1\.00円 \(-1\.25%\)/);
-  assert.match(elements.get("friday-condition").textContent, /11\/6.*-10\.00円/);
-  assert.match(elements.get("nikkei-delay").textContent, /遅延あり/);
-  assert.match(elements.get("nikkei-asof").textContent, /11:00/);
+  assert.equal(elements.get("nikkei-price").textContent, "80.00");
+  assert.match(elements.get("nikkei-date").textContent, /2026\/11\/6/);
+  assert.match(elements.get("nikkei-change").textContent, /-10\.00円 \(-11\.11%\)/);
 }));
 
-test("offline events immediately clear the highlight even when the quote is otherwise fresh", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements, listeners }) => {
-  await load();
-  listeners.get("offline")();
-  assert.equal(elements.get("signal-title").textContent, "判定保留");
-  assert.equal(elements.get("signal").className, "signal");
-}));
-
-test("index errors are independent of fund loading and saved quotes cannot highlight", () => withBrowser({ now: "2026-11-09T02:06:00Z", failIndex: true, savedIndex: indexData() }, async ({ load, elements }) => {
+test("index errors are independent of fund loading and preserve saved closes", () => withBrowser({ now: "2026-11-09T02:06:00Z", failIndex: true, savedIndex: indexData() }, async ({ load, elements }) => {
   await load();
   assert.equal(elements.get("latest-nav").textContent, "48,950");
-  assert.equal(elements.get("nikkei-price").textContent, "79.00");
-  assert.equal(elements.get("signal-title").textContent, "判定保留");
+  assert.equal(elements.get("nikkei-price").textContent, "80.00");
   assert.match(elements.get("nikkei-notice").textContent, /保存済み/);
 }));
 
-test("an intraday highlight expires without requiring a reload", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements, intervals, setNow }) => {
-  await load();
-  setNow("2026-11-09T02:21:00Z");
-  intervals[0]();
-  assert.equal(elements.get("signal-title").textContent, "判定保留");
-  assert.equal(elements.get("signal").className, "signal");
-}));
-
-test("an upward index leaves the condition card unhighlighted", () => {
+test("a confirmed same-day close appears only after Japanese midnight without a reload", () => {
   const indexPayload = indexData();
-  indexPayload.quote.price = 81;
-  return withBrowser({ now: "2026-11-09T02:06:00Z", indexPayload }, async ({ load, elements }) => {
+  indexPayload.quote.isClose = true;
+  indexPayload.quote.asOf = "2026-11-09T06:45:00Z";
+  indexPayload.fetchedAt = "2026-11-09T06:50:00Z";
+  indexPayload.closes.push({ date: "2026-11-09", close: 79 });
+  return withBrowser({ now: "2026-11-09T14:59:59Z", indexPayload }, async ({ load, elements, intervals, setNow }) => {
     await load();
-    assert.equal(elements.get("signal-title").textContent, "条件未一致");
-    assert.equal(elements.get("signal").className, "signal");
+    assert.equal(elements.get("nikkei-price").textContent, "80.00");
+    setNow("2026-11-09T15:00:00Z");
+    intervals[0]();
+    assert.equal(elements.get("nikkei-price").textContent, "79.00");
   });
 });
+
+test("holdings can be entered, saved and valued without changing price caches", () => withBrowser({}, async ({ load, elements, storage }) => {
+  await load();
+  assert.equal(elements.get("holding-profit").textContent, "—");
+  elements.get("units-input").value = "100000";
+  elements.get("average-input").value = "45000";
+  elements.get("holdings-form").listeners.get("submit")({ preventDefault() {} });
+  assert.equal(elements.get("holding-units").textContent, "100,000口");
+  assert.equal(elements.get("holding-average").textContent, "45,000円");
+  assert.equal(elements.get("holding-cost").textContent, "450,000円");
+  assert.equal(elements.get("holding-value").textContent, "489,500円");
+  assert.equal(elements.get("holding-profit").textContent, "+39,500円");
+  assert.equal(elements.get("holding-rate").textContent, "+8.78%");
+  assert.equal(elements.get("holdings-editor").open, false);
+  assert.match(elements.get("holding-basis").textContent, /2026\/11\/06/);
+  assert.deepEqual(JSON.parse(storage.get(holdingsKey)), {
+    version: 2, initial: { units: 100000, averageCost: 45000, date: "2026-11-08" }, transactions: [],
+  });
+  assert.deepEqual(JSON.parse(storage.get(storageKey)), data);
+}));
+
+test("saved holdings restore inputs and show losses after reopening", () => withBrowser({ savedHolding: { units: 100000, averageCost: 50000 } }, async ({ load, elements }) => {
+  await load();
+  assert.equal(elements.get("units-input").value, "100000");
+  assert.equal(elements.get("average-input").value, "50000");
+  assert.equal(elements.get("holding-profit").textContent, "-10,500円");
+  assert.equal(elements.get("holding-profit").className, "change negative");
+}));
+
+test("invalid edits preserve saved holdings and the previous calculation", () => withBrowser({ savedHolding: { units: 100000, averageCost: 45000 } }, async ({ load, elements, storage }) => {
+  await load();
+  elements.get("units-input").value = "1.5";
+  elements.get("holdings-form").listeners.get("submit")({ preventDefault() {} });
+  assert.match(elements.get("holding-status").textContent, /整数/);
+  assert.equal(elements.get("holding-profit").textContent, "+39,500円");
+  assert.equal(JSON.parse(storage.get(holdingsKey)).units, 100000);
+}));
+
+test("storage failure still calculates holdings and explains that the edit is unsaved", () => withBrowser({ blockStorage: true }, async ({ load, elements }) => {
+  await load();
+  elements.get("units-input").value = "10000";
+  elements.get("average-input").value = "45000";
+  elements.get("holdings-form").listeners.get("submit")({ preventDefault() {} });
+  assert.equal(elements.get("holding-profit").textContent, "+3,950円");
+  assert.match(elements.get("holding-status").textContent, /保存できません/);
+}));
+
+test("saved holdings without available NAV never show an invented profit", () => withBrowser({ savedHolding: { units: 10000, averageCost: 45000 }, fail: true }, async ({ load, elements }) => {
+  await load();
+  assert.equal(elements.get("holding-units").textContent, "10,000口");
+  assert.equal(elements.get("holding-profit").textContent, "—");
+  assert.match(elements.get("holding-basis").textContent, /基準価額を取得/);
+}));
+
+const tradeData = {
+  fundId: FUND_ID, sourceUrl: SOURCE_URL,
+  prices: [{ date: "2026-11-04", nav: 10000 }, { date: "2026-11-05", nav: 15000 }, { date: "2026-11-06", nav: 16000 }],
+};
+const initialPosition = { units: 10000, averageCost: 10000 };
+const click = (elements, id) => elements.get(id).listeners.get("click")();
+
+test("repeated 1,000-yen clicks and an amount step record cash flows, then cancel and undo", () => withBrowser({ savedHolding: initialPosition, payload: tradeData }, async ({ load, elements, storage }) => {
+  await load();
+  elements.get("trade-date").value = "2026-11-04";
+  assert.equal(elements.get("invest-button").textContent, "1,000円を投資");
+  click(elements, "invest-button");
+  click(elements, "invest-button");
+  assert.equal(elements.get("total-invested").textContent, "12,000円");
+  elements.get("trade-date").value = "2026-11-05";
+  click(elements, "amount-increase");
+  click(elements, "amount-increase");
+  assert.equal(elements.get("withdraw-button").textContent, "3,000円を回収");
+  click(elements, "withdraw-button");
+  assert.equal(elements.get("holding-units").textContent, "10,000口");
+  assert.equal(elements.get("total-withdrawn").textContent, "3,000円");
+  assert.equal(elements.get("holding-profit").textContent, "+6,000円");
+  assert.equal(elements.get("total-profit").textContent, "+7,000円");
+  assert.equal(JSON.parse(storage.get(holdingsKey)).transactions.length, 3);
+  const latestRow = elements.get("transaction-rows").children[0];
+  latestRow.children[1].listeners.get("click")();
+  assert.equal(elements.get("total-withdrawn").textContent, "0円");
+  assert.equal(elements.get("undo-transaction").hidden, false);
+  click(elements, "undo-transaction");
+  assert.equal(elements.get("total-withdrawn").textContent, "3,000円");
+  assert.equal(elements.get("total-profit").textContent, "+7,000円");
+}));
+
+test("a manual unit correction preserves cumulative cash and survives restoration", async () => {
+  let savedHolding;
+  await withBrowser({ savedHolding: initialPosition, payload: tradeData }, async ({ load, elements, storage }) => {
+    await load();
+    elements.get("correction-date").value = "2026-11-06";
+    elements.get("correction-units").value = "10001";
+    elements.get("correction-form").listeners.get("submit")({ preventDefault() {} });
+    assert.equal(elements.get("holding-units").textContent, "10,001口");
+    assert.equal(elements.get("total-invested").textContent, "10,000円");
+    assert.equal(elements.get("total-withdrawn").textContent, "0円");
+    assert.equal(elements.get("total-profit").textContent, "+6,002円");
+    savedHolding = JSON.parse(storage.get(holdingsKey));
+  });
+  await withBrowser({ savedHolding, payload: tradeData }, async ({ load, elements }) => {
+    await load();
+    assert.equal(elements.get("holding-units").textContent, "10,001口");
+    assert.equal(elements.get("transaction-rows").children.length, 1);
+    assert.equal(elements.get("units-input").value, "10000");
+  });
+});
+
+test("pending trades count cash immediately and acquire units only at the exact execution-day NAV", async () => {
+  let payload = tradeData;
+  await withBrowser({ savedHolding: initialPosition, now: "2026-11-09T03:00:00Z", reply: async () => ({ ok: true, json: async () => payload }) }, async ({ load, elements }) => {
+    await load();
+    click(elements, "invest-button");
+    assert.equal(elements.get("total-invested").textContent, "11,000円");
+    assert.equal(elements.get("holding-value").textContent, "—");
+    assert.match(elements.get("holding-basis").textContent, /基準価額待ち/);
+    payload = { ...tradeData, prices: [...tradeData.prices, { date: "2026-11-09", nav: 20000 }] };
+    await click(elements, "reload");
+    assert.equal(elements.get("holding-units").textContent, "10,500口");
+    assert.equal(elements.get("holding-value").textContent, "21,000円");
+    assert.equal(elements.get("total-profit").textContent, "+10,000円");
+  });
+});
+
+test("invalid amounts, invalid dates and excess withdrawals never change saved records", () => withBrowser({ savedHolding: initialPosition, payload: tradeData }, async ({ load, elements, storage }) => {
+  await load();
+  const original = storage.get(holdingsKey);
+  elements.get("trade-date").value = "2026-11-04";
+  elements.get("trade-amount").value = "1500";
+  click(elements, "invest-button");
+  assert.match(elements.get("holding-status").textContent, /1,000円単位/);
+  elements.get("trade-amount").value = "1000";
+  elements.get("trade-date").value = "2026-02-30";
+  click(elements, "invest-button");
+  assert.match(elements.get("holding-status").textContent, /有効な日付/);
+  elements.get("trade-date").value = "2026-11-04";
+  elements.get("trade-amount").value = "11000";
+  click(elements, "withdraw-button");
+  assert.match(elements.get("holding-status").textContent, /保有分を超え/);
+  assert.equal(storage.get(holdingsKey), original);
+  assert.equal(elements.get("total-invested").textContent, "10,000円");
+}));
+
+test("editing the initial position retains previously recorded investment history", () => withBrowser({ savedHolding: initialPosition, payload: tradeData }, async ({ load, elements, storage }) => {
+  await load();
+  elements.get("trade-date").value = "2026-11-04";
+  click(elements, "invest-button");
+  elements.get("units-input").value = "20000";
+  elements.get("holdings-form").listeners.get("submit")({ preventDefault() {} });
+  assert.equal(JSON.parse(storage.get(holdingsKey)).transactions.length, 1);
+  assert.equal(elements.get("total-invested").textContent, "21,000円");
+  assert.equal(elements.get("holding-units").textContent, "21,000口");
+}));

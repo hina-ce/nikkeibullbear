@@ -1,18 +1,22 @@
 import { buildView, japanDate, shortDate, signedNumber, validateDataset } from "./nav.mjs";
-import { buildNikkeiView, japanTime, validateNikkei } from "./nikkei.mjs";
+import { buildNikkeiView, validateNikkei } from "./nikkei.mjs";
+import { buildPortfolio, parseHolding, validatePortfolio } from "./holdings.mjs";
 
 const element = (id) => document.getElementById(id);
 const cacheKey = `bull43:${new URL("./data/nav.json", import.meta.url).pathname}`;
 const nikkeiCacheKey = `bull43:${new URL("./data/nikkei.json", import.meta.url).pathname}`;
-const money = new Intl.NumberFormat("ja-JP");
+const holdingsKey = `bull43:holdings:${new URL("./", import.meta.url).pathname}`;
+const money = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 });
+const averageMoney = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 8 });
 const indexMoney = new Intl.NumberFormat("ja-JP", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 let dataset = null;
 let nikkeiDataset = null;
-let nikkeiVerified = false;
 let nikkeiBusy = false;
 let nikkeiError = "";
 let busy = false;
 let renderedDate = "";
+let portfolio = null;
+let lastRemoved = null;
 
 function notice(id, message) {
   element(id).textContent = message;
@@ -62,6 +66,167 @@ function render() {
     fragment.append(row);
   }
   element("history-rows").replaceChildren(fragment);
+  renderHolding();
+}
+
+function renderHolding() {
+  for (const id of ["holding-units", "holding-average", "holding-cost", "holding-value", "holding-profit", "holding-rate", "total-invested", "total-withdrawn", "total-profit"]) {
+    element(id).textContent = "—";
+  }
+  for (const id of ["holding-profit", "holding-rate", "total-profit"]) element(id).className = "change neutral";
+  for (const id of ["invest-button", "withdraw-button", "correction-save"]) element(id).disabled = !portfolio;
+  element("undo-transaction").hidden = !lastRemoved;
+  element("transaction-rows").replaceChildren();
+  element("transaction-count").textContent = `履歴（${portfolio?.transactions.length ?? 0}件）`;
+  for (const id of ["trade-date", "correction-date", "initial-date"]) element(id).max = japanDate();
+  if (!portfolio) return;
+  try {
+    const result = buildPortfolio(portfolio, dataset?.prices);
+    element("holding-units").textContent = result.units == null ? "計算待ち" : `${money.format(result.units)}口`;
+    element("holding-average").textContent = result.averageCost == null ? "—" : `${averageMoney.format(result.averageCost)}円`;
+    for (const [id, amount] of [["holding-cost", result.purchaseValue], ["holding-value", result.marketValue], ["total-invested", result.invested], ["total-withdrawn", result.withdrawn]]) {
+      element(id).textContent = amount == null ? "—" : `${money.format(amount)}円`;
+    }
+    for (const [id, amount, unit, digits] of [["holding-profit", result.profit, "円", 0], ["holding-rate", result.profitRate, "%", 2], ["total-profit", result.totalProfit, "円", 0]]) {
+      element(id).textContent = amount == null ? "—" : `${signedNumber(amount, digits)}${unit}`;
+      element(id).className = `change ${direction(amount)}`;
+    }
+    element("investment-period").textContent = `累計期間：${portfolio.initial.date ? portfolio.initial.date.replaceAll("-", "/") : "初期保有（開始日未設定）"} 〜 ${japanDate().replaceAll("-", "/")}`;
+    element("investment-breakdown").textContent = `初期取得額 ${money.format(result.initialCost)}円 ＋ 追加投資 ${money.format(result.added)}円`;
+    const basis = result.latest ? `評価基準：${result.latest.date.replaceAll("-", "/")} ${money.format(result.latest.nav)}円 / 1万口` : "基準価額を取得すると損益を表示します。";
+    element("holding-basis").textContent = result.errors.length ? result.errors[0].message
+      : result.pending.length && result.units == null ? `基準価額待ち ${result.pending.length}件。約定日の基準価額が公表されると口数・損益を計算します。休業日を選んだ場合は履歴を取り消して登録し直してください。`
+      : result.pending.length ? `${basis} · 基準価額待ち ${result.pending.length}件は補正済み口数で評価。取得金額が未確定の場合、保有分の評価損益は公表後に表示します。`
+      : basis;
+    element("trade-date").min = portfolio.initial.date ?? "";
+    element("correction-date").min = portfolio.initial.date ?? "";
+    if (!element("units-editor").open && result.units != null) element("correction-units").value = String(result.units);
+    for (const record of result.records.slice().reverse()) {
+      const row = document.createElement("li");
+      const content = document.createElement("div");
+      const title = document.createElement("p");
+      title.textContent = `${record.date.replaceAll("-", "/")} ${record.type === "buy" ? "投資" : record.type === "sell" ? "回収" : "口数補正"} ${money.format(record.type === "adjustment" ? record.units : record.amount)}${record.type === "adjustment" ? "口" : "円"}`;
+      const detail = document.createElement("p");
+      detail.className = "publication-note";
+      detail.textContent = record.type === "adjustment" ? "その時点の口数に補正（入出金なし）"
+        : record.nav == null ? "基準価額待ち"
+        : `基準価額 ${money.format(record.nav)}円${record.unitDelta == null ? " · 口数計算待ち" : ` · 概算 ${signedNumber(record.unitDelta)}口`}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "取消";
+      remove.setAttribute("aria-label", `${title.textContent}を取り消す`);
+      remove.addEventListener("click", () => removeTransaction(record.id));
+      content.append(title, detail);
+      row.append(content, remove);
+      element("transaction-rows").append(row);
+    }
+  } catch (error) {
+    element("holding-basis").textContent = error.message;
+  }
+}
+
+function loadHolding() {
+  try {
+    const saved = localStorage.getItem(holdingsKey);
+    if (saved !== null) {
+      portfolio = validatePortfolio(JSON.parse(saved));
+      element("units-input").value = String(portfolio.initial.units);
+      element("average-input").value = String(portfolio.initial.averageCost);
+      element("initial-date").value = portfolio.initial.date ?? "";
+      element("holdings-editor").open = false;
+      notice("holding-status", "この端末に保存した保有情報です。");
+    }
+  } catch {
+    notice("holding-status", "保存した保有情報を読み込めません。保有口数と平均取得単価を入力してください。");
+  }
+  renderHolding();
+}
+
+function commitPortfolio(candidate, message) {
+  const normalized = validatePortfolio(candidate);
+  const result = buildPortfolio(normalized, dataset?.prices);
+  if (result.errors.length) throw new Error(result.errors[0].message);
+  portfolio = normalized;
+  try {
+    localStorage.setItem(holdingsKey, JSON.stringify(portfolio));
+    notice("holding-status", message);
+  } catch {
+    notice("holding-status", "記録をこの端末に保存できません。今回の表示は利用できますが、再起動すると変更が失われます。");
+  }
+  renderHolding();
+}
+
+function saveHolding(event) {
+  event.preventDefault();
+  try {
+    const initial = { ...parseHolding(element("units-input").value, element("average-input").value), date: element("initial-date").value || null };
+    commitPortfolio({ version: 2, initial, transactions: portfolio?.transactions ?? [] }, "初期保有を保存しました。売買履歴は引き継いでいます。");
+    element("holdings-editor").open = false;
+    lastRemoved = null;
+    element("undo-transaction").hidden = true;
+  } catch (error) {
+    notice("holding-status", error.message);
+  }
+}
+
+function recordTransaction(type) {
+  try {
+    if (!portfolio) throw new Error("先に初期保有を設定してください。保有なしの場合は口数・単価ともに0を入力できます。");
+    const entry = { id: `${new Date().getTime()}-${Math.random().toString(36).slice(2)}`, date: element("trade-date").value, type, amount: Number(element("trade-amount").value) };
+    commitPortfolio({ ...portfolio, transactions: [...portfolio.transactions, entry] }, `${entry.date.replaceAll("-", "/")}に${money.format(entry.amount)}円の${type === "buy" ? "投資" : "回収"}を記録しました。`);
+    lastRemoved = null;
+    element("undo-transaction").hidden = true;
+  } catch (error) {
+    notice("holding-status", error.message);
+  }
+}
+
+function correctUnits(event) {
+  event.preventDefault();
+  try {
+    if (!portfolio) throw new Error("先に初期保有を設定してください。");
+    if (!element("correction-units").value.trim()) throw new Error("補正後の口数を入力してください。");
+    const entry = { id: `${new Date().getTime()}-${Math.random().toString(36).slice(2)}`, date: element("correction-date").value, type: "adjustment", units: Number(element("correction-units").value) };
+    commitPortfolio({ ...portfolio, transactions: [...portfolio.transactions, entry] }, `${entry.date.replaceAll("-", "/")}時点の口数を${money.format(entry.units)}口に補正しました。累計投資額・回収額は変わりません。`);
+    element("units-editor").open = false;
+    lastRemoved = null;
+    element("undo-transaction").hidden = true;
+  } catch (error) {
+    notice("holding-status", error.message);
+  }
+}
+
+function removeTransaction(id) {
+  try {
+    const previous = portfolio;
+    commitPortfolio({ ...portfolio, transactions: portfolio.transactions.filter((entry) => entry.id !== id) }, "記録を取り消しました。「取消を戻す」で復元できます。");
+    lastRemoved = previous;
+    element("undo-transaction").hidden = false;
+  } catch (error) {
+    notice("holding-status", error.message);
+  }
+}
+
+function undoTransaction() {
+  if (!lastRemoved) return;
+  try {
+    commitPortfolio(lastRemoved, "取り消した記録を復元しました。");
+    lastRemoved = null;
+    element("undo-transaction").hidden = true;
+  } catch (error) {
+    notice("holding-status", error.message);
+  }
+}
+
+function updateTradeAmount(step = 0) {
+  let amount = Number(element("trade-amount").value);
+  if (step) {
+    amount = Math.max(1000, (Number.isFinite(amount) ? amount : 1000) + step);
+    element("trade-amount").value = String(amount);
+  }
+  const valid = Number.isSafeInteger(amount) && amount >= 1000 && amount % 1000 === 0;
+  element("invest-button").textContent = valid ? `${money.format(amount)}円を投資` : "投資を記録";
+  element("withdraw-button").textContent = valid ? `${money.format(amount)}円を回収` : "回収を記録";
 }
 
 function readSaved() {
@@ -75,49 +240,22 @@ function readSaved() {
 }
 
 function renderNikkei() {
-  const signal = element("signal");
-  signal.className = "signal";
   if (!nikkeiDataset) {
-    element("signal-title").textContent = "判定保留";
-    element("signal-summary").textContent = "日経平均のデータを確認できないため、判定できません。";
-    for (const [id, label] of [["friday-condition", "前週金曜"], ["previous-condition", "直前営業日"], ["today-condition", "本日"]]) {
-      element(id).textContent = `${label}の下落：データなし`;
-      element(id).className = "condition-unknown";
-    }
+    element("nikkei-date").textContent = "—";
     notice("nikkei-notice", nikkeiError || "日経平均を読み込んでいます…");
     return;
   }
-  const view = buildNikkeiView(nikkeiDataset, { online: navigator.onLine, verified: nikkeiVerified });
-  const quote = nikkeiDataset.quote;
-  element("nikkei-price").textContent = indexMoney.format(quote.price);
+  const view = buildNikkeiView(nikkeiDataset);
+  element("nikkei-price").textContent = view.latest ? indexMoney.format(view.latest.close) : "—";
   element("nikkei-change").className = `change ${direction(view.delta)}`;
-  element("nikkei-change").textContent = `前日比 ${signedNumber(view.delta, 2)}円 (${signedNumber(view.rate, 2)}%)`;
-  element("nikkei-date").textContent = `${shortDate(quote.date, true)} ${quote.isClose ? "終値" : "日中値"}`;
-  element("nikkei-asof").textContent = `配信元時刻 ${japanTime(quote.asOf)} JST`;
-  element("nikkei-fetched").textContent = `取得時刻 ${japanTime(nikkeiDataset.fetchedAt)} JST`;
-  element("nikkei-delay").textContent = `${nikkeiDataset.delayMinutes == null ? "遅延あり（分数は配信元から未提供）" : `配信元の遅延 ${nikkeiDataset.delayMinutes}分`} · 日中は約5分ごとに取得`;
-  element("signal-title").textContent = { match: "条件一致", waiting: "判定保留", "no-match": "条件未一致" }[view.state];
-  element("signal-summary").textContent = view.holdReason || (view.state === "match"
-    ? "前週金曜・直前営業日・本日の日経平均がすべて下落しています。"
-    : "指定した下落条件は、まだすべてそろっていません。");
-  if (view.state === "match") signal.className = "signal signal-match";
-  const checks = [
-    ["friday-condition", `前週金曜 ${shortDate(view.fridayDate)}`, view.friday?.delta],
-    ["previous-condition", `直前営業日${view.previous ? ` ${shortDate(view.previous.date)}` : ""}`, view.previous?.delta],
-    ["today-condition", `本日 ${shortDate(view.today)}`, view.checks[2] == null ? null : view.delta],
-  ];
-  for (const [index, [id, label, delta]] of checks.entries()) {
-    const value = view.checks[index];
-    element(id).className = value == null ? "condition-unknown" : value ? "condition-yes" : "";
-    element(id).textContent = `${value == null ? "—" : value ? "✓" : "○"} ${label}：${value == null ? "判定不可" : `${signedNumber(delta, 2)}円`}`;
-  }
-  notice("nikkei-notice", nikkeiError || (quote.date !== view.today ? "本日分のデータなし。表示値の日付を確認してください。" : ""));
+  element("nikkei-change").textContent = view.delta == null ? "前日比 —" : `前日比 ${signedNumber(view.delta, 2)}円 (${signedNumber(view.rate, 2)}%)`;
+  element("nikkei-date").textContent = view.latest ? `${view.latest.date.slice(0, 4)}/${shortDate(view.latest.date, true)}` : "—";
+  notice("nikkei-notice", nikkeiError || (!view.latest ? "前営業日までの確定終値がありません。" : ""));
 }
 
 async function loadNikkei() {
   if (nikkeiBusy) return;
   nikkeiBusy = true;
-  nikkeiVerified = false;
   element("nikkei").setAttribute("aria-busy", "true");
   renderNikkei();
   const controller = new AbortController();
@@ -128,7 +266,6 @@ async function loadNikkei() {
     const candidate = validateNikkei(await response.json());
     if (nikkeiDataset && candidate.quote.asOf < nikkeiDataset.quote.asOf) throw new Error("日経平均の配信データが保存値より古くなっています。");
     nikkeiDataset = candidate;
-    nikkeiVerified = true;
     nikkeiError = "";
     try {
       localStorage.setItem(nikkeiCacheKey, JSON.stringify(candidate));
@@ -138,7 +275,7 @@ async function loadNikkei() {
   } catch (error) {
     console.warn("Nikkei could not be loaded:", error);
     nikkeiError = nikkeiDataset
-      ? "日経平均を取得できませんでした。保存済みデータを表示し、判定を保留しています。"
+      ? "日経平均を取得できませんでした。保存済みの確定終値を表示しています。"
       : "日経平均を取得できませんでした。通信環境を確認して再読込してください。";
   } finally {
     clearTimeout(timeout);
@@ -219,9 +356,16 @@ async function registerWorker() {
 }
 
 element("reload").addEventListener("click", loadPrices);
+element("holdings-form").addEventListener("submit", saveHolding);
+element("invest-button").addEventListener("click", () => recordTransaction("buy"));
+element("withdraw-button").addEventListener("click", () => recordTransaction("sell"));
+element("amount-decrease").addEventListener("click", () => updateTradeAmount(-1000));
+element("amount-increase").addEventListener("click", () => updateTradeAmount(1000));
+element("trade-amount").addEventListener("input", () => updateTradeAmount());
+element("correction-form").addEventListener("submit", correctUnits);
+element("undo-transaction").addEventListener("click", undoTransaction);
 window.addEventListener("online", loadPrices);
 window.addEventListener("offline", () => {
-  nikkeiVerified = false;
   renderNikkei();
   notice("connection-notice", dataset ? "オフラインです。保存済みデータを表示しています。" : "オフラインです。オンラインに戻ってから再読込してください。");
 });
@@ -232,9 +376,13 @@ setInterval(() => {
   if (dataset && document.visibilityState === "visible" && japanDate() !== renderedDate) render();
   if (document.visibilityState === "visible") renderNikkei();
 }, 30000);
-setInterval(() => {
-  if (document.visibilityState === "visible" && navigator.onLine && !busy) loadNikkei();
-}, 60000);
+
+element("trade-date").value = japanDate();
+element("correction-date").value = japanDate();
+element("initial-date").value = japanDate();
+element("trade-amount").value = "1000";
+updateTradeAmount();
+loadHolding();
 
 try {
   nikkeiDataset = validateNikkei(JSON.parse(localStorage.getItem(nikkeiCacheKey)));
