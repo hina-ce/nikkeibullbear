@@ -1,5 +1,7 @@
 import { isISODate, japanDate } from "./nav.mjs";
 
+export const FUND_DAILY_LEVERAGE = 4.3;
+
 export function validateHolding(value) {
   if (!Number.isSafeInteger(value?.units) || value.units < 0) {
     throw new Error("保有口数は0以上の整数で入力してください。");
@@ -165,6 +167,17 @@ export function buildPortfolio(value, prices = [], today = japanDate()) {
     throw new Error("月初繰越評価額が計算できる範囲を超えています。");
   }
   const monthlyInvested = monthlyInitial + monthlyAdded;
+  // A one-day scenario starts at the latest published NAV BEFORE today,
+  // even when today's actual NAV has already been published.
+  const breakEvenQuote = prices.filter((price) => price.date < today).at(-1) ?? null;
+  let breakEven = null;
+  if (unitsKnown && costKnown && units > 0 && averageCost > 0 && !errors.length && breakEvenQuote) {
+    const fundRate = (averageCost / breakEvenQuote.nav - 1) * 100;
+    const indexRate = fundRate / FUND_DAILY_LEVERAGE;
+    if (Number.isFinite(indexRate)) {
+      breakEven = { quote: breakEvenQuote, targetNav: averageCost, fundRate, indexRate, leverage: FUND_DAILY_LEVERAGE };
+    }
+  }
   return {
     portfolio, initialCost, invested, added, withdrawn,
     units: unitsKnown ? units : null, averageCost, purchaseValue: unitsKnown && costKnown ? purchaseValue : null,
@@ -175,6 +188,6 @@ export function buildPortfolio(value, prices = [], today = japanDate()) {
       invested: monthlyInvested, withdrawn: monthlyWithdrawn, openingUnits, openingValue, openingQuote,
       profit: marketValue == null || openingValue == null ? null : marketValue + monthlyWithdrawn - monthlyInvested - openingValue,
     },
-    records, pending, errors,
+    breakEven, records, pending, errors,
   };
 }

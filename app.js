@@ -65,6 +65,9 @@ function render() {
 
 function renderHolding() {
   renderedDate = japanDate();
+  element("break-even-rate").textContent = "—";
+  element("break-even-note").textContent = "保有情報と基準価額がそろうと計算します。";
+  element("break-even-basis").textContent = "";
   for (const id of ["holding-units", "holding-average", "holding-cost", "holding-value", "holding-profit", "holding-rate", "total-invested", "total-withdrawn", "total-profit"]) {
     element(id).textContent = "—";
   }
@@ -77,6 +80,19 @@ function renderHolding() {
   if (!portfolio) return;
   try {
     const result = buildPortfolio(portfolio, dataset?.prices);
+    if (result.breakEven) {
+      const estimate = result.breakEven;
+      const flat = Math.abs(estimate.indexRate) < 1e-10;
+      element("break-even-rate").textContent = `約 ${signedNumber(flat ? 0 : estimate.indexRate, 2)}%`;
+      element("break-even-note").textContent = flat ? "基準日の価格で評価損益0％です。"
+        : estimate.indexRate > 0 ? "この上昇率が、保有分の評価損益0％になる目安です。"
+        : "マイナスの値は、評価損益0％までの下落余地の目安です。";
+      element("break-even-basis").textContent = `${estimate.quote.date.replaceAll("-", "/")}の基準価額 ${money.format(estimate.quote.nav)}円 → 損益0％の基準価額 ${money.format(estimate.targetNav)}円（1万口あたり）`;
+    } else {
+      element("break-even-note").textContent = result.units === 0 ? "保有口数が0口のため、損益0％ラインはありません。"
+        : result.units == null || result.averageCost == null ? "保有口数・平均取得単価の確定後に計算します。"
+        : "当日より前の公表済み基準価額を取得すると計算します。";
+    }
     element("holding-units").textContent = result.units == null ? "計算待ち" : `${money.format(result.units)}口`;
     element("holding-average").textContent = result.averageCost == null ? "—" : `${averageMoney.format(result.averageCost)}円`;
     for (const [id, amount] of [["holding-cost", result.purchaseValue], ["holding-value", result.marketValue], ["total-invested", result.monthly.invested], ["total-withdrawn", result.monthly.withdrawn]]) {

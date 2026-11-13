@@ -334,3 +334,47 @@ test("monthly cash totals also reset when price fetching has failed", () => with
   assert.equal(elements.get("holding-units").textContent, "10,000口");
   assert.equal(elements.get("total-profit").textContent, "—");
 }));
+
+const breakEvenPosition = { version: 2, initial: { units: 10000, averageCost: 50000, date: "2026-11-01" }, transactions: [] };
+const breakEvenPrices = { fundId: FUND_ID, sourceUrl: SOURCE_URL, prices: [
+  { date: "2026-11-12", nav: 45000 }, { date: "2026-11-13", nav: 48000 },
+] };
+
+test("the daily break-even estimate uses the prior NAV and updates when the acquisition price is edited", () => withBrowser({ savedHolding: breakEvenPosition, payload: breakEvenPrices, now: "2026-11-13T04:00:00Z" }, async ({ load, elements, calls }) => {
+  await load();
+  assert.equal(elements.get("break-even-rate").textContent, "約 +2.58%");
+  assert.match(elements.get("break-even-basis").textContent, /2026\/11\/12.*45,000円.*50,000円/);
+  assert.match(elements.get("break-even-note").textContent, /この上昇率/);
+  assert.equal(elements.get("holding-profit").textContent, "-2,000円");
+  assert.ok(calls.every(([url]) => url.pathname.endsWith("data/nav.json")));
+  elements.get("average-input").value = "54000";
+  elements.get("holdings-form").listeners.get("submit")({ preventDefault() {} });
+  assert.equal(elements.get("break-even-rate").textContent, "約 +4.65%");
+}));
+
+test("the daily reference advances at Japanese midnight, including an already published same-day NAV", () => withBrowser({ savedHolding: breakEvenPosition, payload: breakEvenPrices, now: "2026-11-13T14:59:59Z" }, async ({ load, elements, intervals, setNow }) => {
+  await load();
+  assert.equal(elements.get("break-even-rate").textContent, "約 +2.58%");
+  setNow("2026-11-13T15:00:00Z");
+  intervals[0]();
+  assert.equal(elements.get("break-even-rate").textContent, "約 +0.97%");
+  assert.match(elements.get("break-even-basis").textContent, /2026\/11\/13.*48,000円/);
+}));
+
+test("profitable holdings display their downside margin and empty holdings display no rate", async () => {
+  const profitable = structuredClone(breakEvenPosition);
+  profitable.initial.averageCost = 40000;
+  await withBrowser({ savedHolding: profitable, payload: breakEvenPrices, now: "2026-11-13T04:00:00Z" }, async ({ load, elements }) => {
+    await load();
+    assert.equal(elements.get("break-even-rate").textContent, "約 -2.58%");
+    assert.match(elements.get("break-even-note").textContent, /下落余地/);
+  });
+  const empty = structuredClone(breakEvenPosition);
+  empty.initial.units = 0;
+  empty.initial.averageCost = 0;
+  await withBrowser({ savedHolding: empty, payload: breakEvenPrices, now: "2026-11-13T04:00:00Z" }, async ({ load, elements }) => {
+    await load();
+    assert.equal(elements.get("break-even-rate").textContent, "—");
+    assert.match(elements.get("break-even-note").textContent, /0口/);
+  });
+});

@@ -63,6 +63,10 @@ h1 { font-size: 15px; line-height: 1.4; letter-spacing: -.04em; }
 .holding-profit > p:first-child { font-size: 12px; color: var(--muted); }
 #holding-profit, #total-profit { margin-top: 8px; font-size: clamp(24px, 7vw, 32px); font-weight: 700; overflow-wrap: anywhere; }
 #holding-rate { margin-top: 4px; font-size: 13px; }
+.break-even { margin-top: 18px; padding: 16px 12px; border-radius: 9px; background: #f7f8fa; }
+.break-even h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); line-height: 1.7; }
+.break-even-rate { margin-top: 8px; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.break-even .table-note { line-height: 1.7; }
 .total-profit { margin-top: 18px; }
 .cash-totals { padding: 14px 12px; border-radius: 9px; background: #f7f8fa; margin-bottom: 8px; }
 .holdings-card details { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 12px; }

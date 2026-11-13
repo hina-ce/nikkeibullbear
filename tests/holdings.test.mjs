@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildPortfolio, calculateHolding, parseHolding, validateHolding, validatePortfolio } from "../holdings.mjs";
+import { buildPortfolio, calculateHolding, FUND_DAILY_LEVERAGE, parseHolding, validateHolding, validatePortfolio } from "../holdings.mjs";
 
 test("holdings are valued per 10,000 units and show a profit or loss", () => {
   const holding = parseHolding("100000", "45000");
@@ -199,6 +199,50 @@ test("an actual-unit correction after a pending withdrawal values cash returns w
   assert.equal(result.totalProfit, 5000);
   assert.equal(result.averageCost, null);
   assert.equal(result.profit, null);
+  assert.equal(result.breakEven, null);
+});
+
+test("break-even reverses the required NAV return instead of dividing the unrealized loss rate", () => {
+  const portfolio = account();
+  portfolio.initial.averageCost = 50000;
+  const result = buildPortfolio(portfolio, [
+    { date: "2026-11-12", nav: 45000 }, { date: today, nav: 48000 },
+  ], today);
+  assert.equal(result.breakEven.quote.date, "2026-11-12");
+  assert.equal(result.breakEven.targetNav, 50000);
+  assert.equal(result.breakEven.leverage, 4.3);
+  assert.ok(Math.abs(result.breakEven.indexRate - 2.5839793282) < 1e-8);
+  const estimatedNav = result.breakEven.quote.nav * (1 + FUND_DAILY_LEVERAGE * result.breakEven.indexRate / 100);
+  assert.ok(Math.abs(estimatedNav - result.averageCost) < 1e-8);
+  assert.notEqual(result.breakEven.indexRate, -result.profitRate / FUND_DAILY_LEVERAGE);
+});
+
+test("a profitable reference NAV produces a negative break-even return and exact break-even produces zero", () => {
+  const portfolio = account();
+  portfolio.initial.averageCost = 45000;
+  const profitable = buildPortfolio(portfolio, [{ date: "2026-11-12", nav: 50000 }], today);
+  assert.ok(Math.abs(profitable.breakEven.indexRate - -2.3255813953) < 1e-8);
+  const flat = buildPortfolio(portfolio, [{ date: "2026-11-12", nav: 45000 }], today);
+  assert.equal(flat.breakEven.indexRate, 0);
+});
+
+test("break-even follows the current cost basis after purchases, sales and a unit correction", () => {
+  const correction = { id: "actual", date: "2026-11-11", type: "adjustment", units: 10010 };
+  const result = buildPortfolio(account([buy, sell, correction]), prices, today);
+  assert.equal(result.breakEven.targetNav, result.purchaseValue / result.units * 10000);
+  assert.equal(result.breakEven.quote.nav, 15000);
+  const navAtTarget = result.breakEven.quote.nav * (1 + result.breakEven.indexRate / 100 * 4.3);
+  assert.ok(Math.abs(result.units / 10000 * navAtTarget - result.purchaseValue) < 1e-8);
+});
+
+test("zero holdings, pending unit calculations and a missing prior NAV have no invented break-even", () => {
+  const empty = account();
+  empty.initial.units = 0;
+  empty.initial.averageCost = 0;
+  assert.equal(buildPortfolio(empty, prices, today).breakEven, null);
+  const pending = buildPortfolio(account([{ ...buy, date: today }]), prices.slice(0, -1), today);
+  assert.equal(pending.breakEven, null);
+  assert.equal(buildPortfolio(account(), [{ date: today, nav: 50000 }], today).breakEven, null);
 });
 
 test("overdrawn withdrawals are detected and retain an inspectable cash history", () => {
