@@ -3,7 +3,7 @@ const RELEASE = "dev-v1";
 const CACHE_PREFIX = `bull43:${self.registration.scope}:`;
 const CACHE_NAME = `${CACHE_PREFIX}${RELEASE}`;
 const CORE_ASSETS = [
-  "./index.html", "./styles.css", "./app.js", "./nav.mjs", "./nikkei.mjs", "./holdings.mjs", "./manifest.webmanifest",
+  "./index.html", "./styles.css", "./app.js", "./nav.mjs", "./holdings.mjs", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png",
 ];
 const assetURLs = new Set(CORE_ASSETS.map((path) => new URL(path, self.registration.scope).href));

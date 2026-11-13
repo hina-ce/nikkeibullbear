@@ -52,10 +52,6 @@ h1 { font-size: 15px; line-height: 1.4; letter-spacing: -.04em; }
 .messages { margin: 14px 0 28px; }
 .notice { padding: 11px 13px; border: 1px solid #ecdba9; border-radius: 9px; background: #fffbef; color: #775c21; font-size: 12px; line-height: 1.7; }
 .publication-note { color: var(--muted); font-size: 11px; line-height: 1.7; margin: 8px 2px 0; }
-.nikkei-card { margin: 24px 0 32px; padding: 20px 18px; border: 1px solid var(--line); border-radius: 16px; }
-.nikkei-card h2 { font-size: 15px; font-weight: 650; }
-.nikkei-price { display: flex; align-items: baseline; gap: 6px; margin: 14px 0 8px; font-size: clamp(27px, 8vw, 36px); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
-#nikkei-change { font-size: 13px; font-weight: 600; margin-bottom: 13px; }
 .holdings-card { margin-bottom: 32px; padding: 20px 18px; border: 1px solid var(--line); border-radius: 16px; }
 .holdings-card h2 { font-size: 15px; font-weight: 650; }
 .holding-values { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 12px; margin: 20px 0; }

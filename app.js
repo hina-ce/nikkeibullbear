@@ -1,18 +1,12 @@
 import { buildView, japanDate, shortDate, signedNumber, validateDataset } from "./nav.mjs";
-import { buildNikkeiView, validateNikkei } from "./nikkei.mjs";
 import { buildPortfolio, parseHolding, validatePortfolio } from "./holdings.mjs";
 
 const element = (id) => document.getElementById(id);
 const cacheKey = `bull43:${new URL("./data/nav.json", import.meta.url).pathname}`;
-const nikkeiCacheKey = `bull43:${new URL("./data/nikkei.json", import.meta.url).pathname}`;
 const holdingsKey = `bull43:holdings:${new URL("./", import.meta.url).pathname}`;
 const money = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 });
 const averageMoney = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 8 });
-const indexMoney = new Intl.NumberFormat("ja-JP", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 let dataset = null;
-let nikkeiDataset = null;
-let nikkeiBusy = false;
-let nikkeiError = "";
 let busy = false;
 let renderedDate = "";
 let portfolio = null;
@@ -239,59 +233,12 @@ function readSaved() {
   }
 }
 
-function renderNikkei() {
-  if (!nikkeiDataset) {
-    element("nikkei-date").textContent = "—";
-    notice("nikkei-notice", nikkeiError || "日経平均を読み込んでいます…");
-    return;
-  }
-  const view = buildNikkeiView(nikkeiDataset);
-  element("nikkei-price").textContent = view.latest ? indexMoney.format(view.latest.close) : "—";
-  element("nikkei-change").className = `change ${direction(view.delta)}`;
-  element("nikkei-change").textContent = view.delta == null ? "前日比 —" : `前日比 ${signedNumber(view.delta, 2)}円 (${signedNumber(view.rate, 2)}%)`;
-  element("nikkei-date").textContent = view.latest ? `${view.latest.date.slice(0, 4)}/${shortDate(view.latest.date, true)}` : "—";
-  notice("nikkei-notice", nikkeiError || (!view.latest ? "前営業日までの確定終値がありません。" : ""));
-}
-
-async function loadNikkei() {
-  if (nikkeiBusy) return;
-  nikkeiBusy = true;
-  element("nikkei").setAttribute("aria-busy", "true");
-  renderNikkei();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const response = await fetch(new URL("./data/nikkei.json", import.meta.url), { cache: "no-store", signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const candidate = validateNikkei(await response.json());
-    if (nikkeiDataset && candidate.quote.asOf < nikkeiDataset.quote.asOf) throw new Error("日経平均の配信データが保存値より古くなっています。");
-    nikkeiDataset = candidate;
-    nikkeiError = "";
-    try {
-      localStorage.setItem(nikkeiCacheKey, JSON.stringify(candidate));
-    } catch {
-      nikkeiError = "日経平均を端末に保存できません。オフライン時には表示できない場合があります。";
-    }
-  } catch (error) {
-    console.warn("Nikkei could not be loaded:", error);
-    nikkeiError = nikkeiDataset
-      ? "日経平均を取得できませんでした。保存済みの確定終値を表示しています。"
-      : "日経平均を取得できませんでした。通信環境を確認して再読込してください。";
-  } finally {
-    clearTimeout(timeout);
-    nikkeiBusy = false;
-    element("nikkei").setAttribute("aria-busy", "false");
-    renderNikkei();
-  }
-}
-
 async function loadPrices() {
   if (busy) return;
   busy = true;
   element("reload").disabled = true;
   element("quote").setAttribute("aria-busy", "true");
   notice("loading-notice", "基準価額を読み込んでいます…");
-  const nikkeiRequest = loadNikkei();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
@@ -331,7 +278,6 @@ async function loadPrices() {
       element("history-rows").append(row);
     }
   } finally {
-    await nikkeiRequest;
     clearTimeout(timeout);
     busy = false;
     element("reload").disabled = false;
@@ -366,7 +312,6 @@ element("correction-form").addEventListener("submit", correctUnits);
 element("undo-transaction").addEventListener("click", undoTransaction);
 window.addEventListener("online", loadPrices);
 window.addEventListener("offline", () => {
-  renderNikkei();
   notice("connection-notice", dataset ? "オフラインです。保存済みデータを表示しています。" : "オフラインです。オンラインに戻ってから再読込してください。");
 });
 document.addEventListener("visibilitychange", () => {
@@ -374,7 +319,6 @@ document.addEventListener("visibilitychange", () => {
 });
 setInterval(() => {
   if (dataset && document.visibilityState === "visible" && japanDate() !== renderedDate) render();
-  if (document.visibilityState === "visible") renderNikkei();
 }, 30000);
 
 element("trade-date").value = japanDate();
@@ -384,12 +328,6 @@ element("trade-amount").value = "1000";
 updateTradeAmount();
 loadHolding();
 
-try {
-  nikkeiDataset = validateNikkei(JSON.parse(localStorage.getItem(nikkeiCacheKey)));
-} catch {
-  nikkeiDataset = null;
-}
-renderNikkei();
 dataset = readSaved();
 if (dataset) {
   render();

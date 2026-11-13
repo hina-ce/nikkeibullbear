@@ -13,16 +13,9 @@ const data = {
   ],
 };
 const storageKey = `bull43:${new URL("../data/nav.json", import.meta.url).pathname}`;
-const indexStorageKey = `bull43:${new URL("../data/nikkei.json", import.meta.url).pathname}`;
 const holdingsKey = `bull43:holdings:${new URL("../", import.meta.url).pathname}`;
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const elementIds = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
-const indexData = () => ({
-  symbol: "^N225", sourceUrl: "https://finance.yahoo.com/quote/%5EN225/", currency: "JPY", delayMinutes: null,
-  fetchedAt: "2026-11-09T02:05:00Z",
-  quote: { date: "2026-11-09", asOf: "2026-11-09T02:00:00Z", price: 79, previousClose: 80, isClose: false },
-  closes: [{ date: "2026-11-04", close: 100 }, { date: "2026-11-05", close: 90 }, { date: "2026-11-06", close: 80 }],
-});
 let importId = 0;
 
 class Element {
@@ -51,7 +44,6 @@ async function withBrowser(options, check) {
   const intervals = [];
   const listeners = new Map();
   const storage = new Map(options.saved ? [[storageKey, JSON.stringify(options.saved)]] : []);
-  if (options.savedIndex) storage.set(indexStorageKey, JSON.stringify(options.savedIndex));
   if (options.savedHolding) storage.set(holdingsKey, JSON.stringify(options.savedHolding));
   const calls = [];
   const document = {
@@ -71,10 +63,6 @@ async function withBrowser(options, check) {
     },
     fetch: async (...args) => {
       calls.push(args);
-      if (args[0].pathname.endsWith("nikkei.json")) {
-        if (options.failIndex || options.fail) throw new Error("index unavailable");
-        return { ok: true, json: async () => options.indexPayload ?? indexData() };
-      }
       if (options.reply) return options.reply(...args);
       if (options.fail) throw new Error("network unavailable");
       return { ok: true, json: async () => options.payload ?? data };
@@ -107,7 +95,8 @@ test("loading state, actual rendered rows, and reload fetching published JSON", 
   assert.equal(elements.get("quote").attributes["aria-busy"], "false");
   assert.ok(storage.has(storageKey));
   await elements.get("reload").listeners.get("click")();
-  assert.equal(calls.filter(([url]) => url.pathname.endsWith("nav.json")).length, 2);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(([url]) => url.pathname === new URL("../data/nav.json", import.meta.url).pathname));
   assert.ok(calls.every(([, options]) => options.cache === "no-store"));
 }));
 
@@ -162,35 +151,6 @@ test("a visible app switches its period after Japanese Monday midnight", () => w
   assert.equal(elements.get("history-rows").children.length, 1);
   assert.match(elements.get("period").textContent, /11\/6 〜 11\/9/);
 }));
-
-test("the index shows only the prior confirmed session and its daily change", () => withBrowser({ now: "2026-11-09T02:06:00Z" }, async ({ load, elements }) => {
-  await load();
-  assert.equal(elements.get("nikkei-price").textContent, "80.00");
-  assert.match(elements.get("nikkei-date").textContent, /2026\/11\/6/);
-  assert.match(elements.get("nikkei-change").textContent, /-10\.00円 \(-11\.11%\)/);
-}));
-
-test("index errors are independent of fund loading and preserve saved closes", () => withBrowser({ now: "2026-11-09T02:06:00Z", failIndex: true, savedIndex: indexData() }, async ({ load, elements }) => {
-  await load();
-  assert.equal(elements.get("latest-nav").textContent, "48,950");
-  assert.equal(elements.get("nikkei-price").textContent, "80.00");
-  assert.match(elements.get("nikkei-notice").textContent, /保存済み/);
-}));
-
-test("a confirmed same-day close appears only after Japanese midnight without a reload", () => {
-  const indexPayload = indexData();
-  indexPayload.quote.isClose = true;
-  indexPayload.quote.asOf = "2026-11-09T06:45:00Z";
-  indexPayload.fetchedAt = "2026-11-09T06:50:00Z";
-  indexPayload.closes.push({ date: "2026-11-09", close: 79 });
-  return withBrowser({ now: "2026-11-09T14:59:59Z", indexPayload }, async ({ load, elements, intervals, setNow }) => {
-    await load();
-    assert.equal(elements.get("nikkei-price").textContent, "80.00");
-    setNow("2026-11-09T15:00:00Z");
-    intervals[0]();
-    assert.equal(elements.get("nikkei-price").textContent, "79.00");
-  });
-});
 
 test("holdings can be entered, saved and valued without changing price caches", () => withBrowser({}, async ({ load, elements, storage }) => {
   await load();

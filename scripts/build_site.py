@@ -7,7 +7,7 @@ import shutil
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / ".site"
 ASSETS = (
-    "index.html", "styles.css", "app.js", "nav.mjs", "nikkei.mjs", "holdings.mjs", "manifest.webmanifest",
+    "index.html", "styles.css", "app.js", "nav.mjs", "holdings.mjs", "manifest.webmanifest",
     "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
 )
 
@@ -20,12 +20,12 @@ def build_site():
     for name in (*ASSETS, "sw.js"):
         digest.update(name.encode())
         digest.update((ROOT / name).read_bytes())
-    if not all((ROOT / name).is_file() for name in ("data/nav.json", "data/nikkei.json")):
-        raise ValueError("Run both price collectors before packaging.")
+    if not (ROOT / "data/nav.json").is_file():
+        raise ValueError("Run the NAV collector before packaging.")
     if OUTPUT.exists():
         shutil.rmtree(OUTPUT)
     OUTPUT.mkdir()
-    for name in (*ASSETS, "data/nav.json", "data/nikkei.json"):
+    for name in (*ASSETS, "data/nav.json"):
         destination = OUTPUT / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / name, destination)
